@@ -1,0 +1,12 @@
+# Generated from lib/connect_rpc/interceptor.rb with RBS::Inline
+
+module ConnectRpc
+  # Base class for unary interceptors. Override #call and invoke
+  # `nxt.call(request, context)` to proceed down the chain. Interceptors run
+  # identically for every transport, so cross-cutting concerns (auth, logging)
+  # are defined once and apply to both the wire and in-process paths.
+  class Interceptor
+    # : (untyped, Context, ^(untyped, Context) -> untyped) -> untyped
+    def call: (untyped, Context, ^(untyped, Context) -> untyped) -> untyped
+  end
+end

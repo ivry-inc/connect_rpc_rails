@@ -1,0 +1,35 @@
+# Generated from lib/connect_rpc/dispatcher.rb with RBS::Inline
+
+module ConnectRpc
+  # The single transport-agnostic core. Every transport (Rack, in-process) calls
+  # #invoke with an already-decoded request message and a Context, so the same
+  # handler and interceptor chain serve both. #invoke is also the one place a
+  # ConnectRpc::Error is turned into a Result — the transports never rescue.
+  class Dispatcher
+    # Raised inside Timeout so it can't be confused with an unrelated Timeout::Error.
+    class DeadlineExceeded < StandardError
+    end
+
+    # : (?interceptors: Array[Interceptor]) -> void
+    def initialize: (?interceptors: Array[Interceptor]) -> void
+
+    # : (untyped descriptor, untyped handler) -> self
+    def register: (untyped descriptor, untyped handler) -> self
+
+    # : (String) -> ServiceRegistration?
+    def registration: (String) -> ServiceRegistration?
+
+    # : (String, String, untyped, Context) -> Result
+    def invoke: (String, String, untyped, Context) -> Result
+
+    # Runs the handler through its per-handler callbacks if it opts into them,
+    # otherwise calls the RPC method directly.
+    # : (untyped, String, untyped, Context) -> untyped
+    private def invoke_handler: (untyped, String, untyped, Context) -> untyped
+
+    # Enforces context.deadline (from connect-timeout-ms) if set: an already-expired
+    # deadline, or one that elapses while the handler runs, becomes deadline_exceeded.
+    # : (Context) { () -> untyped } -> untyped
+    private def within_deadline: (Context) { () -> untyped } -> untyped
+  end
+end

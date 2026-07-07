@@ -1,0 +1,15 @@
+# Generated from lib/connect_rpc/in_process.rb with RBS::Inline
+
+module ConnectRpc
+  # In-process transport. The host application calls the exact same handler as the
+  # wire transport, with no serialization: it passes an already-built request
+  # message and seeds `values` (e.g. a trusted principal) straight into
+  # Dispatcher#invoke. A failure Result is re-raised, the idiomatic Ruby contract.
+  class InProcess
+    # : (Dispatcher, String, ?values: Hash[Symbol, untyped], ?metadata: Hash[String, String]) -> void
+    def initialize: (Dispatcher, String, ?values: Hash[Symbol, untyped], ?metadata: Hash[String, String]) -> void
+
+    # : (String, untyped) -> untyped
+    def call: (String, untyped) -> untyped
+  end
+end

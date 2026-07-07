@@ -1,0 +1,44 @@
+# Generated from lib/connect_rpc/codec.rb with RBS::Inline
+
+module ConnectRpc
+  # Encodes/decodes bare unary message bodies. Both codecs delegate to
+  # google-protobuf, so serialization is not something this library implements.
+  module Codec
+    interface _Codec
+      def decode: (untyped message_class, String bytes) -> untyped
+
+      def encode: (untyped message) -> String
+
+      def content_type: () -> String
+    end
+
+    # : (String?) -> _Codec?
+    def self.for_content_type: (String?) -> _Codec?
+
+    module Json
+      CONTENT_TYPE: String
+
+      # : (untyped, String) -> untyped
+      def self.decode: (untyped, String) -> untyped
+
+      # : (untyped) -> String
+      def self.encode: (untyped) -> String
+
+      # : () -> String
+      def self.content_type: () -> String
+    end
+
+    module Proto
+      CONTENT_TYPE: String
+
+      # : (untyped, String) -> untyped
+      def self.decode: (untyped, String) -> untyped
+
+      # : (untyped) -> String
+      def self.encode: (untyped) -> String
+
+      # : () -> String
+      def self.content_type: () -> String
+    end
+  end
+end
