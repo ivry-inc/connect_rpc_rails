@@ -29,7 +29,7 @@ class BillingController < ActionController::API
 end
 
 # config/routes.rb — 1 RPC = 1 action, so an unknown method is a plain 404.
-ConnectRpc::Routing.mount(self, Billing::V1::SERVICE_DESCRIPTOR, controller: "billing")
+ConnectRpc::Routing.mount(self, BillingController)
 ```
 
 **Why `ActionController::API`, not a bare Rack transport?** An earlier cut had its own

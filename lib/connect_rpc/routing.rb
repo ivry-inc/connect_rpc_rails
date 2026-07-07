@@ -2,12 +2,14 @@
 # rbs_inline: enabled
 
 module ConnectRpc
-  # Declares the Connect routes for a service: one `POST /<pkg.Service>/<Method>`
-  # per RPC, mapped to `<controller>#<underscored_method>` (1 RPC = 1 action). Call
-  # inside a Rails `routes.draw` block:
+  # Declares the Connect routes for a controller: one `POST /<pkg.Service>/<Method>`
+  # per RPC, mapped to `<controller>#<underscored_method>` (1 RPC = 1 action). The
+  # service name, methods, and controller path all come from the controller's
+  # `connect_service`, so the descriptor lives in exactly one place. Call inside a
+  # Rails `routes.draw` block:
   #
   #   Rails.application.routes.draw do
-  #     ConnectRpc::Routing.mount(self, Billing::V1::SERVICE_DESCRIPTOR, controller: "billing")
+  #     ConnectRpc::Routing.mount(self, BillingController)
   #   end
   #
   # `format: false` keeps the dots in the service name from being parsed as a format
@@ -15,12 +17,13 @@ module ConnectRpc
   # verb (`via: :all`) so a wrong-verb request reaches the controller and becomes a
   # Connect-correct 405 rather than a router 404.
   module Routing
-    #: (untyped mapper, untyped descriptor, controller: String) -> void
-    def self.mount(mapper, descriptor, controller:)
-      descriptor.each do |method|
+    #: (untyped mapper, untyped controller) -> void
+    def self.mount(mapper, controller)
+      service_name = controller.connect_registration.service_name
+      controller.connect_rpcs.each do |action, rpc|
         mapper.match(
-          "/#{descriptor.name}/#{method.name}",
-          to: "#{controller}##{ConnectRpc.underscore(method.name)}",
+          "/#{service_name}/#{rpc.name}",
+          to: "#{controller.controller_path}##{action}",
           via: :all,
           format: false,
         )

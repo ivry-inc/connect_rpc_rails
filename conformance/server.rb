@@ -37,7 +37,7 @@ end
 
 routes = ActionDispatch::Routing::RouteSet.new
 routes.draw do
-  ConnectRpc::Routing.mount(self, DESCRIPTOR, controller: "conformance")
+  ConnectRpc::Routing.mount(self, ConformanceController)
 end
 
 server = Puma::Server.new(routes)

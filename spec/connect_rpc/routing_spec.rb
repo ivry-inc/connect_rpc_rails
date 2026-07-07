@@ -12,7 +12,7 @@ RSpec.describe ConnectRpc::Routing do
   let(:routes) do
     ActionDispatch::Routing::RouteSet.new.tap do |set|
       set.draw do
-        ConnectRpc::Routing.mount(self, Billing::V1::SERVICE_DESCRIPTOR, controller: "billing")
+        ConnectRpc::Routing.mount(self, BillingController)
       end
     end
   end
