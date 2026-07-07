@@ -9,7 +9,7 @@ module ConnectRpc
   # Rails `routes.draw` block:
   #
   #   Rails.application.routes.draw do
-  #     ConnectRpc::Routing.mount(self, BillingController)
+  #     ConnectRpc::Routing.mount(self, GreetController)
   #   end
   #
   # `format: false` keeps the dots in the service name from being parsed as a format

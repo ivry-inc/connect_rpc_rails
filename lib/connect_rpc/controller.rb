@@ -21,11 +21,11 @@ module ConnectRpc
   # chain into the handler, encode the reply. Errors become Connect wire errors in
   # one place (`rescue_from`), the deadline is one `around_action`.
   #
-  #   class BillingController < ActionController::API
+  #   class GreetController < ActionController::API
   #     include ConnectRpc::Controller
-  #     connect_service Billing::V1::SERVICE_DESCRIPTOR,
-  #       handler: Billing::V1::BillingHandler.new,
-  #       interceptors: [Billing::V1::AuthInterceptor.new(&VERIFIER)]
+  #     connect_service Greet::V1::SERVICE_DESCRIPTOR,
+  #       handler: Greet::V1::GreetHandler.new,
+  #       interceptors: [Greet::V1::AuthInterceptor.new(&VERIFIER)]
   #   end
   #
   # Routes are 1 RPC = 1 action (see ConnectRpc::Routing), so an unknown method is a

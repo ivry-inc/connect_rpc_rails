@@ -21,22 +21,22 @@ end
 # ExceptionMappingInterceptor must be outermost so it wraps the raiser.
 class MappedErrorController < ActionController::API
   include ConnectRpc::Controller
-  connect_service Billing::V1::SERVICE_DESCRIPTOR,
-    handler: Billing::V1::BillingHandler.new,
+  connect_service Greet::V1::SERVICE_DESCRIPTOR,
+    handler: Greet::V1::GreetHandler.new,
     interceptors: [ConnectRpc::ExceptionMappingInterceptor.new(DemoTimeout => :unavailable), BoomInterceptor.new]
 end
 
 class UnmappedErrorController < ActionController::API
   include ConnectRpc::Controller
-  connect_service Billing::V1::SERVICE_DESCRIPTOR,
-    handler: Billing::V1::BillingHandler.new,
+  connect_service Greet::V1::SERVICE_DESCRIPTOR,
+    handler: Greet::V1::GreetHandler.new,
     interceptors: [BoomInterceptor.new]
 end
 
 class SlowController < ActionController::API
   include ConnectRpc::Controller
-  connect_service Billing::V1::SERVICE_DESCRIPTOR,
-    handler: Billing::V1::BillingHandler.new,
+  connect_service Greet::V1::SERVICE_DESCRIPTOR,
+    handler: Greet::V1::GreetHandler.new,
     interceptors: [SlowInterceptor.new]
 end
 
@@ -51,37 +51,37 @@ end
 
 class MetadataErrorController < ActionController::API
   include ConnectRpc::Controller
-  connect_service Billing::V1::SERVICE_DESCRIPTOR,
-    handler: Billing::V1::BillingHandler.new,
+  connect_service Greet::V1::SERVICE_DESCRIPTOR,
+    handler: Greet::V1::GreetHandler.new,
     interceptors: [MetadataErrorInterceptor.new]
 end
 
 RSpec.describe "error handling" do
   def json_body(**overrides)
-    Billing::V1::IngestUsageRequest.encode_json(ingest_request(**overrides))
+    Greet::V1::SayHelloRequest.encode_json(say_hello_request(**overrides))
   end
 
   it "maps a configured exception to its Connect HTTP status" do
-    status, _headers, resp = call_connect(MappedErrorController, "IngestUsage", json_body, content_type: "application/json")
+    status, _headers, resp = call_connect(MappedErrorController, "SayHello", json_body, content_type: "application/json")
 
     expect(status).to eq(503)
     expect(JSON.parse(resp)["code"]).to eq("unavailable")
   end
 
   it "propagates an unmapped exception to the host middleware" do
-    expect { call_connect(UnmappedErrorController, "IngestUsage", json_body, content_type: "application/json") }
+    expect { call_connect(UnmappedErrorController, "SayHello", json_body, content_type: "application/json") }
       .to raise_error(DemoTimeout)
   end
 
   it "enforces connect-timeout-ms as a deadline_exceeded error" do
-    status, _headers, resp = call_connect(SlowController, "IngestUsage", json_body, content_type: "application/json", timeout_ms: 10)
+    status, _headers, resp = call_connect(SlowController, "SayHello", json_body, content_type: "application/json", timeout_ms: 10)
 
     expect(status).to eq(504)
     expect(JSON.parse(resp)["code"]).to eq("deadline_exceeded")
   end
 
   it "sends handler response headers and trailers even on an error" do
-    status, headers, = call_connect(MetadataErrorController, "IngestUsage", json_body, content_type: "application/json")
+    status, headers, = call_connect(MetadataErrorController, "SayHello", json_body, content_type: "application/json")
 
     expect(status).to eq(400)
     expect(headers["x-custom-header"]).to eq("hval")

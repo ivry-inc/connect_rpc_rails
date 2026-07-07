@@ -1,10 +1,10 @@
 # frozen_string_literal: true
 
-module Billing
+module Greet
   module V1
     # Stands in for crossbar-rp bearer verification: it authenticates the Bearer
     # token and writes the resulting principal onto the context for the handler to
-    # read. This is the authN edge; authZ (realm/payer scoping) belongs in the
+    # read. This is the authN edge; authZ (scoping to the principal) belongs in the
     # handler. "principal" is just a convention on the context values bag, not a
     # library concept.
     class AuthInterceptor < ConnectRpc::Interceptor
@@ -25,5 +25,10 @@ module Billing
         nxt.call(request, context)
       end
     end
+
+    # Stand-in for the real bearer verifier the controller wires into AuthInterceptor.
+    # In production this is Crossbar::Rp bearer/JWKS verification returning a
+    # scoped Principal; here a valid token maps to a fixed user.
+    TOKEN_VERIFIER = ->(token) { token == 'valid-token' ? 'user:99' : nil }
   end
 end

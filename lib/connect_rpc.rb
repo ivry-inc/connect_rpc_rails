@@ -12,7 +12,7 @@ require 'connect_rpc/controller'
 require 'connect_rpc/routing'
 
 module ConnectRpc
-  # "IngestUsage" -> "ingest_usage". Maps a Connect method name to its Ruby handler
+  # "SayHello" -> "say_hello". Maps a Connect method name to its Ruby handler
   # method so dispatch stays reflection-driven (no per-service codegen).
   #: (String) -> String
   def self.underscore(name)

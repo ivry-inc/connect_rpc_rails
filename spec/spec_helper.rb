@@ -5,26 +5,23 @@ $LOAD_PATH.unshift File.expand_path("../lib", __dir__)
 require "rack/mock"
 require "connect_rpc"
 
-require_relative "../examples/billing/billing_pb"
-require_relative "../examples/billing/billing_handler"
-require_relative "../examples/billing/auth_interceptor"
+require_relative "../examples/greet/lib/greet_pb"
+require_relative "../examples/greet/app/rpc/greet_handler"
+require_relative "../examples/greet/app/rpc/auth_interceptor"
 
 # Keep controller instrumentation quiet in specs.
 ActionController::Base.logger = nil
 
-# Shared fixtures/helpers for exercising the example billing service through a
+# Shared fixtures/helpers for exercising the example greet service through a
 # ConnectRpc::Controller.
-module BillingHelpers
-  SERVICE_NAME = "billing.v1.BillingService"
-  VERIFIER = ->(token) { token == "valid-token" ? "realm:99" : nil }
+module GreetHelpers
+  SERVICE_NAME = "greet.v1.GreetService"
+  VERIFIER = Greet::V1::TOKEN_VERIFIER
 
-  def ingest_request(**overrides)
-    Billing::V1::IngestUsageRequest.new(
-      payer_external_id: "company:1234",
-      product: "fax",
-      metric: "pages",
-      quantity: 3,
-      idempotency_key: "k1",
+  def say_hello_request(**overrides)
+    Greet::V1::SayHelloRequest.new(
+      name: "Ada Lovelace",
+      preferred_language: "es",
       **overrides,
     )
   end
@@ -49,7 +46,7 @@ module BillingHelpers
 end
 
 RSpec.configure do |config|
-  config.include BillingHelpers
+  config.include GreetHelpers
   config.disable_monkey_patching!
   config.expect_with(:rspec) { |c| c.syntax = :expect }
 end

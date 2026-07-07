@@ -16,20 +16,42 @@ wiring. The domain logic stays a plain Ruby **handler**; the generated action is
 thin adapter.
 
 ```
-caller ──HTTP──▶ Rails router ──▶ BillingController#ingest_usage ──▶ handler (PORO)
+caller ──HTTP──▶ Rails router ──▶ GreetController#say_hello ──▶ handler (PORO)
                                   (ConnectRpc::Controller: decode ▸ interceptors ▸ encode)
 ```
 
 ```ruby
-class BillingController < ActionController::API
+# app/controllers/greet_controller.rb
+class GreetController < ActionController::API
   include ConnectRpc::Controller
-  connect_service Billing::V1::SERVICE_DESCRIPTOR,
-    handler: Billing::V1::BillingHandler.new,
-    interceptors: [Billing::V1::AuthInterceptor.new(&VERIFIER)]
+  connect_service Greet::V1::SERVICE_DESCRIPTOR,
+    handler: Greet::V1::GreetHandler.new,
+    interceptors: [Greet::V1::AuthInterceptor.new(&Greet::V1::TOKEN_VERIFIER)]
 end
+```
 
-# config/routes.rb — 1 RPC = 1 action, so an unknown method is a plain 404.
-ConnectRpc::Routing.mount(self, BillingController)
+```ruby
+# config/routes.rb — 1 RPC = 1 route, so an unknown method is a plain 404.
+Rails.application.routes.draw do
+  ConnectRpc::Routing.mount(self, GreetController)
+end
+```
+
+The handler is a plain object under `app/rpc/`; nothing about it is HTTP- or
+Rails-aware, so it stays trivially unit-testable:
+
+```ruby
+# app/rpc/greet_handler.rb
+module Greet
+  module V1
+    class GreetHandler
+      def say_hello(request, context)
+        # context[:principal] was set by the auth interceptor; authZ lives here.
+        SayHelloResponse.new(greeting: "Hello, #{request.name}!")
+      end
+    end
+  end
+end
 ```
 
 **Why `ActionController::API`, not a bare Rack transport?** An earlier cut had its own
@@ -69,8 +91,8 @@ interceptor, so it applies to every RPC uniformly. A configurable one ships with
 library:
 
 ```ruby
-connect_service Billing::V1::SERVICE_DESCRIPTOR,
-  handler: Billing::V1::BillingHandler.new,
+connect_service Greet::V1::SERVICE_DESCRIPTOR,
+  handler: Greet::V1::GreetHandler.new,
   interceptors: [
     ConnectRpc::ExceptionMappingInterceptor.new(
       ActiveRecord::RecordNotFound => :not_found,
@@ -104,9 +126,9 @@ TLS remain out of scope. This is the real interop check that hand-written specs 
 
 ## What the prototype proves
 
-- **Reflection-based dispatch, no codegen.** A `protoc`/`buf`-generated service lands in the descriptor pool as a `ServiceDescriptor` whose `MethodDescriptor`s expose input/output message classes. `connect_service` generates the actions purely off that — no per-service generated stubs. (`examples/billing/billing_pb.rb` builds the descriptor in pure Ruby so the demo runs with no protoc toolchain.)
+- **Reflection-based dispatch, no codegen.** A `protoc`/`buf`-generated service lands in the descriptor pool as a `ServiceDescriptor` whose `MethodDescriptor`s expose input/output message classes. `connect_service` generates the actions purely off that — no per-service generated stubs. (`examples/greet/lib/greet_pb.rb` builds the descriptor in pure Ruby so the demo runs with no protoc toolchain.)
 - **Rails instrumentation for free.** `process_action.action_controller` fires for every RPC (including errors), carrying `controller`/`action`/`status` plus a `connect_method` payload key (`pkg.Service/Method`) for clean trace/log resource naming.
-- **authN vs authZ split.** `AuthInterceptor` (stands in for `crossbar-rp` bearer verification) authenticates the `Bearer` token and writes the principal onto the context `values` bag; the handler reads `context[:principal]` for authorization (realm/payer scoping).
+- **authN vs authZ split.** `AuthInterceptor` (stands in for `crossbar-rp` bearer verification) authenticates the `Bearer` token and writes the principal onto the context `values` bag; the handler reads `context[:principal]` for authorization.
 - **Connect wire compliance for unary:** `POST /pkg.Service/Method`, `application/json` + `application/proto`, error body `{code,message,details}` with the spec's code→HTTP-status table.
 
 ## Layout
@@ -118,7 +140,14 @@ lib/connect_rpc/
   service_registration.rb # descriptor -> handler binding (reflection)
   codec.rb                # JSON / proto, via google-protobuf
   context.rb  interceptor.rb  exception_mapping_interceptor.rb  errors.rb
-examples/billing/         # example service, handler, auth interceptor
+examples/greet/           # the example wired up as a real Rails app tree
+  app/controllers/greet_controller.rb    # connect_service on ActionController::API
+  app/rpc/greet_handler.rb               # domain logic — a plain object (PORO)
+  app/rpc/auth_interceptor.rb            # bearer authN interceptor + stub verifier
+  config/routes.rb                       # ConnectRpc::Routing.mount(self, ...)
+  config/application.rb                  # api_only Rails app boot (Action Controller only)
+  proto/greet/v1/greet.proto             # the service contract
+  lib/greet_pb.rb                        # hand-built stand-in for `buf generate` output
 spec/                     # RSpec: controller, routing, auth, error mapping
 ```
 
