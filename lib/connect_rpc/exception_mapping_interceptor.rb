@@ -3,9 +3,9 @@
 
 module ConnectRpc
   # Converts configured exception classes into ConnectRpc::Errors, so domain or
-  # framework exceptions surface as protocol errors on both transports. Only the
-  # configured classes are rescued (never a blanket rescue); anything unmapped
-  # propagates untouched, per the let-exceptions-propagate policy.
+  # framework exceptions surface as protocol errors. Only the configured classes
+  # are rescued (never a blanket rescue); anything unmapped propagates untouched,
+  # per the let-exceptions-propagate policy.
   #
   #   ExceptionMappingInterceptor.new(
   #     ActiveRecord::RecordNotFound => :not_found,

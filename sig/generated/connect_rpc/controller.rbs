@@ -1,0 +1,85 @@
+# Generated from lib/connect_rpc/controller.rb with RBS::Inline
+
+module ConnectRpc
+  # Connect unary transport as an ActionController::API mix-in.
+  #
+  # Include this in an `ActionController::API` subclass and call `connect_service`:
+  # it generates one Rails *action* per RPC method, so every call flows through the
+  # normal controller lifecycle. That is the whole point — `process_action.action_controller`
+  # fires, so the entire Rails observability ecosystem (Datadog resource naming,
+  # Sentry transactions, lograge, the "Completed 200 in Xms" request log) lights up
+  # for free. The handler stays a plain Ruby object holding domain logic; the
+  # generated action is a thin adapter: decode the Connect body, run the interceptor
+  # chain into the handler, encode the reply. Errors become Connect wire errors in
+  # one place (`rescue_from`), the deadline is one `around_action`.
+  #
+  #   class BillingController < ActionController::API
+  #     include ConnectRpc::Controller
+  #     connect_service Billing::V1::SERVICE_DESCRIPTOR,
+  #       handler: Billing::V1::BillingHandler.new,
+  #       interceptors: [Billing::V1::AuthInterceptor.new(&VERIFIER)]
+  #   end
+  #
+  # Routes are 1 RPC = 1 action (see ConnectRpc::Routing), so an unknown method is a
+  # plain Rails 404 and a non-POST is a routing failure — the controller never sees them.
+  module Controller
+    # Raised inside Timeout so it can't be confused with an unrelated Timeout::Error.
+    class DeadlineExceeded < StandardError
+    end
+
+    # : (untyped) -> void
+    def self.included: (untyped) -> void
+
+    module ClassMethods
+      attr_accessor connect_registration: ServiceRegistration
+
+      attr_accessor connect_interceptors: Array[Interceptor]
+
+      attr_accessor connect_rpcs: Hash[String, untyped]
+
+      # : (untyped descriptor, handler: untyped, ?interceptors: Array[Interceptor]) -> void
+      def connect_service: (untyped descriptor, handler: untyped, ?interceptors: Array[Interceptor]) -> void
+    end
+
+    # Connect actions decode the body themselves and never read `params`, so skip
+    # Rails' lazy body param parsing: it would deserialize a JSON body a second time
+    # (instrumentation reads filtered_parameters) and leak request payloads into
+    # logs. Query params still parse; instrumentation is otherwise unaffected.
+    # Runs before instrumentation reads the params, so it decodes the Connect body
+    # here (exactly once) and reuses it two ways: the typed message drives the action,
+    # and its hash form populates `request_parameters` — so the standard Rails request
+    # log, `config.filter_parameters`, and APM see the request without Rails parsing
+    # the body a second time. Also reports the wire format for logs/instrumentation
+    # (via the formats header rather than `request.format=`, which would inject a
+    # :format key into params).
+    def process_action: (*untyped) -> untyped
+
+    private def connect_request_params: () -> untyped
+
+    private def dispatch_connect_rpc: (untyped rpc) -> untyped
+
+    # Connect rejects unsupported request compression with `unimplemented`, advertising
+    # what it can accept.
+    private def reject_unsupported_encoding: () -> untyped
+
+    # Same chain shape as the old standalone dispatcher: interceptors wrap a terminal
+    # that calls the PORO handler, so the interceptor code is unchanged.
+    private def run_connect_chain: (untyped rpc, untyped request_message, untyped context) -> untyped
+
+    # Builds the Context from headers and enforces connect-timeout-ms. Runs as an
+    # around_action so the whole action (decode + interceptors + handler) is under
+    # the deadline; the Error it raises is rendered by rescue_from.
+    private def enforce_connect_deadline: () ?{ (?) -> untyped } -> untyped
+
+    private def build_connect_context: () -> untyped
+
+    private def apply_connect_metadata: (untyped context) -> untyped
+
+    private def render_connect_error: (untyped error) -> untyped
+
+    # The official hook for enriching the process_action.action_controller payload
+    # (same mechanism lograge/Datadog custom fields use). Adds the fully-qualified
+    # Connect method so a trace/log resource can read "pkg.Service/Method".
+    private def append_info_to_payload: (untyped payload) -> untyped
+  end
+end

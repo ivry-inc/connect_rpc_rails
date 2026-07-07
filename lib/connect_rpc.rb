@@ -3,16 +3,13 @@
 
 require 'connect_rpc/version'
 require 'connect_rpc/errors'
-require 'connect_rpc/result'
 require 'connect_rpc/context'
 require 'connect_rpc/codec'
 require 'connect_rpc/service_registration'
 require 'connect_rpc/interceptor'
 require 'connect_rpc/exception_mapping_interceptor'
-require 'connect_rpc/callbacks'
-require 'connect_rpc/dispatcher'
-require 'connect_rpc/rack_handler'
-require 'connect_rpc/in_process'
+require 'connect_rpc/controller'
+require 'connect_rpc/routing'
 
 module ConnectRpc
   # "IngestUsage" -> "ingest_usage". Maps a Connect method name to its Ruby handler

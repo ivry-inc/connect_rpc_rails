@@ -1,107 +1,131 @@
 # connect_rpc (prototype)
 
 A minimal [Connect](https://connectrpc.com/docs/protocol/) **unary** RPC server for
-Rack/Rails, with a first-class **in-process** transport. Built to validate whether a
-Connect-for-Ruby layer is small enough to own, given that `google-protobuf` and
-`grpc` are already in the stack and `crossbar-rp` already provides bearer auth.
+Rails, built on `ActionController::API`. Built to validate whether a Connect-for-Ruby
+layer is small enough to own, given that `google-protobuf` and `grpc` are already in
+the stack and `crossbar-rp` already provides bearer auth.
 
 ## The one idea
 
-One handler, two transports, no duplicated logic:
+A Connect service is an `ActionController::API` controller: `connect_service`
+generates **one Rails action per RPC method**, so every call flows through the normal
+controller lifecycle. That is the whole point — `process_action.action_controller`
+fires, so the entire Rails observability ecosystem (Datadog resource naming, Sentry
+transactions, lograge, the `Completed 200 in Xms` request log) works with no extra
+wiring. The domain logic stays a plain Ruby **handler**; the generated action is a
+thin adapter.
 
 ```
-wire caller  ──HTTP──▶ RackHandler ──┐
-                                      ├─▶ Dispatcher#invoke ─▶ handler (PORO)
-host app ────Ruby────▶ InProcess ────┘
+caller ──HTTP──▶ Rails router ──▶ BillingController#ingest_usage ──▶ handler (PORO)
+                                  (ConnectRpc::Controller: decode ▸ interceptors ▸ encode)
 ```
 
-- `Dispatcher#invoke(service, method, request_message, context)` is the entire core.
-- `RackHandler` decodes the Connect request (JSON or binary), runs interceptors, calls the dispatcher, encodes the reply, maps errors to Connect codes.
-- `InProcess` hands the dispatcher an already-built message — **no serialization** — seeding the context `values` bag directly.
-- Handlers are plain Ruby objects, never controller actions, which is what makes the two transports share one handler.
+```ruby
+class BillingController < ActionController::API
+  include ConnectRpc::Controller
+  connect_service Billing::V1::SERVICE_DESCRIPTOR,
+    handler: Billing::V1::BillingHandler.new,
+    interceptors: [Billing::V1::AuthInterceptor.new(&VERIFIER)]
+end
 
-## Context, values, and callbacks
+# config/routes.rb — 1 RPC = 1 action, so an unknown method is a plain 404.
+ConnectRpc::Routing.mount(self, Billing::V1::SERVICE_DESCRIPTOR, controller: "billing")
+```
+
+**Why `ActionController::API`, not a bare Rack transport?** An earlier cut had its own
+`Dispatcher`/`RackHandler` and PORO-only handlers. It was dropped: going off the
+controller path means losing everything that hangs off `process_action.action_controller`
+(Datadog/Sentry/lograge/the request log) and rebuilding each integration by hand.
+`ActionController::API` ships exactly the useful modules (`Instrumentation`, `Logging`,
+`Rescue`, `AbstractController::Callbacks`, `StrongParameters`) and omits the browser
+concerns an RPC endpoint never uses (CSRF, cookies, flash, view rendering). The handler
+stays a PORO holding domain logic, so it's still trivially unit-testable.
+
+## Context and values
 
 `Context` carries request `metadata`, the deadline, response headers/trailers, and a
 generic **`values`** bag (`context[:key]`) — the same idea as Twirp's env hash or
-connect-go's context values. The library never interprets `values`; an
-authenticated identity is just a convention (`context[:principal]`) that an auth
-interceptor writes and a handler reads. There is deliberately no native "principal".
+connect-go's context values. The library never interprets `values`; an authenticated
+identity is just a convention (`context[:principal]`) that an auth interceptor writes
+and a handler reads. There is deliberately no native "principal".
 
-Handlers can opt into Rails-style per-RPC callbacks (no ActiveSupport dependency):
+Two composable layers of cross-cutting logic:
 
-```ruby
-class BillingHandler
-  include ConnectRpc::Callbacks
-  before_action :authorize!, except: [:health]
-  around_action :with_timing
-  def ingest_usage(request, context) = ...
-  private def authorize!(request, context) = ...  # raise ConnectRpc::Error to reject
-end
-```
-
-Two composable layers: **interceptors** are global (all services); **callbacks** are
-per-handler and scope with `only:`/`except:`.
+- **Interceptors** wrap the decoded `(request, context)` and run for every RPC on the
+  controller — the transport-agnostic seam for auth, exception mapping, timing.
+- **`ActionController` callbacks** (`before_action`/`around_action`) are available on the
+  controller natively — use them for HTTP-level concerns. (The old bespoke
+  `ConnectRpc::Callbacks` module is gone; Rails already provides this.)
 
 ## Error handling
 
-`Dispatcher#invoke` returns a `Result` — a success message or a failure
-`ConnectRpc::Error` — and is the **only** place a `ConnectRpc::Error` is caught.
-The transports just render it: the wire transport encodes an error frame, the
-in-process transport re-raises for the caller. Neither transport has an error
-rescue of its own.
+`ConnectRpc::Error` maps to its Connect code + HTTP status. The controller declares
+`rescue_from ConnectRpc::Error` once, so it becomes the wire error body `{code,message,details}`
+in exactly one place. An exception that isn't a `ConnectRpc::Error` propagates to the
+host's error middleware, per the "let exceptions propagate" policy.
 
-Mapping *arbitrary* exceptions (domain, framework) to Connect codes is the job of
-an interceptor, so it applies to both transports at once. A configurable one ships
-with the library:
+Mapping *arbitrary* exceptions (domain, framework) to Connect codes is the job of an
+interceptor, so it applies to every RPC uniformly. A configurable one ships with the
+library:
 
 ```ruby
-Dispatcher.new(interceptors: [
-  ExceptionMappingInterceptor.new(
-    ActiveRecord::RecordNotFound => :not_found,
-    MyDomain::Invalid           => :invalid_argument,
-  ),
-  # ...your other interceptors
-])
+connect_service Billing::V1::SERVICE_DESCRIPTOR,
+  handler: Billing::V1::BillingHandler.new,
+  interceptors: [
+    ConnectRpc::ExceptionMappingInterceptor.new(
+      ActiveRecord::RecordNotFound => :not_found,
+      MyDomain::Invalid            => :invalid_argument,
+    ),
+    # ...your other interceptors
+  ]
 ```
 
 It rescues only the configured classes (never a blanket rescue); anything unmapped
-propagates to the host's error middleware, per the "let exceptions propagate"
-policy.
+propagates.
+
+## Deadlines and params
+
+- **`connect-timeout-ms`** is enforced as a deadline by an `around_action`, so the whole
+  action (decode + interceptors + handler) runs under it; expiry becomes `deadline_exceeded`.
+- **No double body parse.** A Connect action decodes the body itself and never reads
+  `params`, so the controller skips Rails' lazy body param parsing. The JSON body isn't
+  deserialized twice, and request payloads don't leak into `params`/logs.
 
 ## Conformance
 
-The official [connectrpc/conformance](https://github.com/connectrpc/conformance)
-suite runs against the library (see [`conformance/`](conformance/)). Scoped to
-Connect + unary, it passes **86/86** — including error details, response
-headers/trailers, `connect-timeout-ms` enforcement, and the HTTP-status mapping
-for malformed requests. Streaming, gRPC/gRPC-Web, compression, and TLS are out of
-scope. This is the real interop check that hand-written specs can't give.
+The official [connectrpc/conformance](https://github.com/connectrpc/conformance) suite
+lives in [`conformance/`](conformance/) and passes **86/86** (Connect + unary) against
+the `ActionController::API` transport, with the server-under-test mounted through an
+`ActionDispatch` `RouteSet` — including error details, response headers/trailers (on
+success *and* error), `connect-timeout-ms` enforcement, and the HTTP-status mapping for
+malformed requests (404 unknown method, 405 wrong verb, 415 unsupported media type,
+`unimplemented` for unsupported compression). Streaming, gRPC/gRPC-Web, compression, and
+TLS remain out of scope. This is the real interop check that hand-written specs can't give.
 
 ## What the prototype proves
 
-- **Reflection-based dispatch, no codegen.** A `protoc`/`buf`-generated service lands in the descriptor pool as a `ServiceDescriptor` whose `MethodDescriptor`s expose input/output message classes. `ServiceRegistration` routes purely off that — no per-service generated stubs. (`examples/billing/billing_pb.rb` builds the descriptor in pure Ruby so the demo runs with no protoc toolchain.)
-- **authN vs authZ split.** `AuthInterceptor` (stands in for `crossbar-rp` bearer verification) runs for every transport but only authenticates when `context[:principal]` is absent. A trusted in-process caller seeds `values: {principal: …}` and skips the token check; a wire caller is authenticated from its `Bearer` token. Authorization (realm/payer scoping) stays in the handler, reading `context[:principal]`.
+- **Reflection-based dispatch, no codegen.** A `protoc`/`buf`-generated service lands in the descriptor pool as a `ServiceDescriptor` whose `MethodDescriptor`s expose input/output message classes. `connect_service` generates the actions purely off that — no per-service generated stubs. (`examples/billing/billing_pb.rb` builds the descriptor in pure Ruby so the demo runs with no protoc toolchain.)
+- **Rails instrumentation for free.** `process_action.action_controller` fires for every RPC (including errors), carrying `controller`/`action`/`status` plus a `connect_method` payload key (`pkg.Service/Method`) for clean trace/log resource naming.
+- **authN vs authZ split.** `AuthInterceptor` (stands in for `crossbar-rp` bearer verification) authenticates the `Bearer` token and writes the principal onto the context `values` bag; the handler reads `context[:principal]` for authorization (realm/payer scoping).
 - **Connect wire compliance for unary:** `POST /pkg.Service/Method`, `application/json` + `application/proto`, error body `{code,message,details}` with the spec's code→HTTP-status table.
 
 ## Layout
 
 ```
 lib/connect_rpc/
-  dispatcher.rb           # the transport-agnostic core
-  rack_handler.rb         # HTTP (Connect unary) transport
-  in_process.rb           # in-process transport
+  controller.rb           # the ActionController::API transport (mix-in)
+  routing.rb              # route helper: 1 RPC = 1 action
   service_registration.rb # descriptor -> handler binding (reflection)
   codec.rb                # JSON / proto, via google-protobuf
-  context.rb  interceptor.rb  errors.rb
+  context.rb  interceptor.rb  exception_mapping_interceptor.rb  errors.rb
 examples/billing/         # example service, handler, auth interceptor
-spec/                     # RSpec: in-process + wire, auth, error mapping
+spec/                     # RSpec: controller, routing, auth, error mapping
 ```
 
 ## Run
 
 ```sh
-rspec          # specs (in-process + wire, auth, error mapping)
+rspec          # specs (controller, routing, auth, error mapping, deadline)
 rubocop        # Shopify ruleset
 rake rbs       # regenerate + validate sig/generated from inline annotations
 ```

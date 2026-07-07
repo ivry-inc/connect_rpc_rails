@@ -9,17 +9,14 @@ require_relative "../examples/billing/billing_pb"
 require_relative "../examples/billing/billing_handler"
 require_relative "../examples/billing/auth_interceptor"
 
-# Shared fixtures/helpers for exercising the example billing service over both
-# transports.
+# Keep controller instrumentation quiet in specs.
+ActionController::Base.logger = nil
+
+# Shared fixtures/helpers for exercising the example billing service through a
+# ConnectRpc::Controller.
 module BillingHelpers
   SERVICE_NAME = "billing.v1.BillingService"
   VERIFIER = ->(token) { token == "valid-token" ? "realm:99" : nil }
-
-  def build_dispatcher(with_auth: false)
-    interceptors = with_auth ? [Billing::V1::AuthInterceptor.new(&VERIFIER)] : []
-    ConnectRpc::Dispatcher.new(interceptors: interceptors)
-      .register(Billing::V1::SERVICE_DESCRIPTOR, Billing::V1::BillingHandler.new)
-  end
 
   def ingest_request(**overrides)
     Billing::V1::IngestUsageRequest.new(
@@ -28,15 +25,26 @@ module BillingHelpers
       metric: "pages",
       quantity: 3,
       idempotency_key: "k1",
-**overrides,
+      **overrides,
     )
   end
 
-  # POST a Connect unary call through a Rack::MockRequest client.
-  def rpc_post(client, method, body, content_type:, bearer: nil)
-    env = {input: body, "CONTENT_TYPE" => content_type}
+  # Drive a Connect unary call through a controller's full ActionController
+  # lifecycle (callbacks, rescue_from, instrumentation) — no router needed.
+  def call_connect(controller, method, body, content_type:, bearer: nil, timeout_ms: nil)
+    env = Rack::MockRequest.env_for(
+      "/#{SERVICE_NAME}/#{method}",
+      method: "POST",
+      input: body,
+      "CONTENT_TYPE" => content_type,
+    )
     env["HTTP_AUTHORIZATION"] = "Bearer #{bearer}" if bearer
-    client.post("/#{SERVICE_NAME}/#{method}", env)
+    env["HTTP_CONNECT_TIMEOUT_MS"] = timeout_ms.to_s if timeout_ms
+
+    status, headers, proxy = controller.action(ConnectRpc.underscore(method)).call(env)
+    collected = +""
+    proxy.each { |chunk| collected << chunk }
+    [status, headers, collected]
   end
 end
 

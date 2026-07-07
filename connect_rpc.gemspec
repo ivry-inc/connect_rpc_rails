@@ -6,7 +6,7 @@ Gem::Specification.new do |spec|
   spec.name = "connect_rpc"
   spec.version = ConnectRpc::VERSION
   spec.authors = ["IVRy"]
-  spec.summary = "Minimal Connect RPC (unary) server for Rack/Rails with an in-process transport."
+  spec.summary = "Minimal Connect RPC (unary) server for Rails, built on ActionController::API."
   spec.license = "Nonstandard"
   spec.required_ruby_version = ">= 3.4"
 
@@ -15,8 +15,8 @@ Gem::Specification.new do |spec|
   spec.files = Dir["lib/**/*.rb", "README.md"]
   spec.require_paths = ["lib"]
 
+  spec.add_dependency "actionpack", ">= 7.0"
   spec.add_dependency "google-protobuf", "~> 4.26"
-  spec.add_dependency "rack", ">= 3.0"
 
   spec.add_development_dependency "rake", "~> 13.0"
   spec.add_development_dependency "rbs", "~> 4.0"

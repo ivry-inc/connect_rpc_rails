@@ -2,10 +2,12 @@
 
 module Billing
   module V1
-    # Plain Ruby object — NOT an ActionController action — which is exactly why the
-    # identical handler serves both the wire and in-process transports. AuthN has
-    # already happened by the time we get here; authZ (scoping the write to the
-    # principal's realm) would live in this method, reading context.principal.
+    # Plain Ruby object — NOT an ActionController action. The handler is defined by
+    # the Connect contract, not the transport: it never touches HTTP, so the same
+    # object works over any transport (loopback HTTP today, a separate service
+    # tomorrow) with no change. AuthN has already happened by the time we get here;
+    # authZ (scoping the write to the principal's realm) would live in this method,
+    # reading context[:principal].
     class BillingHandler
       def ingest_usage(request, _context)
         if request.payer_external_id.empty?

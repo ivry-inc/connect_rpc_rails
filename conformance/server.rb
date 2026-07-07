@@ -10,6 +10,7 @@ $LOAD_PATH.unshift(File.expand_path("../lib", __dir__))
 $LOAD_PATH.unshift(File.expand_path("gen", __dir__))
 
 require "connect_rpc"
+require "action_dispatch"
 require "connectrpc/conformance/v1/server_compat_pb"
 require "connectrpc/conformance/v1/service_pb"
 require_relative "service_handler"
@@ -27,12 +28,19 @@ $stdout.reopen($stderr)
 length = $stdin.read(4).unpack1("N")
 _request = V1::ServerCompatRequest.decode($stdin.read(length))
 
-dispatcher = ConnectRpc::Dispatcher.new.register(
-  Google::Protobuf::DescriptorPool.generated_pool.lookup("connectrpc.conformance.v1.ConformanceService"),
-  Conformance::ServiceHandler.new,
-)
+DESCRIPTOR = Google::Protobuf::DescriptorPool.generated_pool.lookup("connectrpc.conformance.v1.ConformanceService")
 
-server = Puma::Server.new(ConnectRpc::RackHandler.new(dispatcher))
+class ConformanceController < ActionController::API
+  include ConnectRpc::Controller
+  connect_service DESCRIPTOR, handler: Conformance::ServiceHandler.new
+end
+
+routes = ActionDispatch::Routing::RouteSet.new
+routes.draw do
+  ConnectRpc::Routing.mount(self, DESCRIPTOR, controller: "conformance")
+end
+
+server = Puma::Server.new(routes)
 listener = server.add_tcp_listener("127.0.0.1", 0)
 server.run
 

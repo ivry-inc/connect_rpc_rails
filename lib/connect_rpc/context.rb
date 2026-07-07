@@ -2,14 +2,13 @@
 # rbs_inline: enabled
 
 module ConnectRpc
-  # Per-invocation context shared by every transport. The Rack transport fills
-  # `metadata` from request headers and derives `deadline`/`timeout_ms`; the
-  # in-process transport can seed `values` directly.
+  # Per-invocation context. The Rack transport fills `metadata` from request
+  # headers and derives `deadline`/`timeout_ms`.
   #
   # `values` is a generic per-invocation bag (like Twirp's env hash or connect-go's
   # context values) that interceptors, callbacks, and handlers use to pass data —
-  # an authenticated principal is just a convention (`context[:principal]`). The
-  # library itself never interprets it.
+  # e.g. an auth interceptor writes the authenticated principal and the handler
+  # reads it (`context[:principal]`). The library itself never interprets it.
   class Context
     attr_reader :metadata #: Hash[String, String]
     attr_reader :deadline #: Time?
@@ -18,7 +17,7 @@ module ConnectRpc
 
     # Response metadata a handler can set. On the wire, response_headers are sent
     # as leading headers and response_trailers as `trailer-`-prefixed headers
-    # (Connect's unary form); in-process callers can read them off the context.
+    # (Connect's unary form).
     attr_reader :response_headers #: Hash[String, Array[String]]
     attr_reader :response_trailers #: Hash[String, Array[String]]
 

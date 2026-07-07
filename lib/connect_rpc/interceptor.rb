@@ -3,9 +3,9 @@
 
 module ConnectRpc
   # Base class for unary interceptors. Override #call and invoke
-  # `nxt.call(request, context)` to proceed down the chain. Interceptors run
-  # identically for every transport, so cross-cutting concerns (auth, logging)
-  # are defined once and apply to both the wire and in-process paths.
+  # `nxt.call(request, context)` to proceed down the chain. Interceptors wrap the
+  # whole dispatch, so cross-cutting concerns (auth, logging, instrumentation) are
+  # defined once and apply to every RPC uniformly.
   class Interceptor
     #: (untyped, Context, ^(untyped, Context) -> untyped) -> untyped
     def call(request, context, nxt)

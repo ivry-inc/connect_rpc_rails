@@ -10,86 +10,81 @@ class BoomInterceptor < ConnectRpc::Interceptor
   end
 end
 
-RSpec.describe "error handling via interceptors" do
-  include BillingHelpers
-
-  # ExceptionMappingInterceptor must be outermost so it wraps the raiser.
-  def dispatcher_with(*interceptors)
-    ConnectRpc::Dispatcher.new(interceptors: interceptors)
-      .register(Billing::V1::SERVICE_DESCRIPTOR, Billing::V1::BillingHandler.new)
-  end
-
-  describe "a mapped exception" do
-    let(:dispatcher) do
-      mapper = ConnectRpc::ExceptionMappingInterceptor.new(DemoTimeout => :unavailable)
-      dispatcher_with(mapper, BoomInterceptor.new)
-    end
-
-    it "surfaces as a ConnectRpc::Error on the in-process transport" do
-      client = ConnectRpc::InProcess.new(dispatcher, BillingHelpers::SERVICE_NAME, values: {principal: "realm:1"})
-
-      expect { client.call("IngestUsage", ingest_request) }
-        .to raise_error(ConnectRpc::Error) { |e| expect(e.code).to eq(:unavailable) }
-    end
-
-    it "surfaces as the mapped HTTP status on the wire transport" do
-      body = Billing::V1::IngestUsageRequest.encode_json(ingest_request)
-      res = rpc_post(
-        Rack::MockRequest.new(ConnectRpc::RackHandler.new(dispatcher)),
-        "IngestUsage",
-        body,
-        content_type: "application/json",
-      )
-
-      expect(res.status).to eq(503)
-      expect(JSON.parse(res.body)["code"]).to eq("unavailable")
-    end
-  end
-
-  describe "an unmapped exception" do
-    let(:dispatcher) { dispatcher_with(BoomInterceptor.new) }
-
-    it "propagates untouched to the caller (in-process)" do
-      client = ConnectRpc::InProcess.new(dispatcher, BillingHelpers::SERVICE_NAME, values: {principal: "realm:1"})
-
-      expect { client.call("IngestUsage", ingest_request) }.to raise_error(DemoTimeout)
-    end
-
-    it "propagates untouched to the host middleware (wire)" do
-      body = Billing::V1::IngestUsageRequest.encode_json(ingest_request)
-      client = Rack::MockRequest.new(ConnectRpc::RackHandler.new(dispatcher))
-
-      expect { rpc_post(client, "IngestUsage", body, content_type: "application/json") }
-        .to raise_error(DemoTimeout)
-    end
+# Interceptor that runs longer than a tight deadline.
+class SlowInterceptor < ConnectRpc::Interceptor
+  def call(request, context, nxt)
+    sleep(0.2)
+    nxt.call(request, context)
   end
 end
 
-RSpec.describe ConnectRpc::Result do
-  it "reports success and carries the message" do
-    result = described_class.success(:payload)
+# ExceptionMappingInterceptor must be outermost so it wraps the raiser.
+class MappedErrorController < ActionController::API
+  include ConnectRpc::Controller
+  connect_service Billing::V1::SERVICE_DESCRIPTOR,
+    handler: Billing::V1::BillingHandler.new,
+    interceptors: [ConnectRpc::ExceptionMappingInterceptor.new(DemoTimeout => :unavailable), BoomInterceptor.new]
+end
 
-    expect(result.success?).to be(true)
-    expect(result.message).to eq(:payload)
-  end
+class UnmappedErrorController < ActionController::API
+  include ConnectRpc::Controller
+  connect_service Billing::V1::SERVICE_DESCRIPTOR,
+    handler: Billing::V1::BillingHandler.new,
+    interceptors: [BoomInterceptor.new]
+end
 
-  it "reports failure and carries the error" do
-    error = ConnectRpc::Error.new(:not_found)
-    result = described_class.failure(error)
+class SlowController < ActionController::API
+  include ConnectRpc::Controller
+  connect_service Billing::V1::SERVICE_DESCRIPTOR,
+    handler: Billing::V1::BillingHandler.new,
+    interceptors: [SlowInterceptor.new]
+end
 
-    expect(result.success?).to be(false)
-    expect(result.error).to be(error)
+# Sets response metadata, then raises — the error response must still carry it.
+class MetadataErrorInterceptor < ConnectRpc::Interceptor
+  def call(_request, context, _nxt)
+    context.response_headers["x-custom-header"] = ["hval"]
+    context.response_trailers["x-custom-trailer"] = ["tval"]
+    raise ConnectRpc::Error.new(:invalid_argument, "boom")
   end
 end
 
-RSpec.describe "deadline enforcement" do
-  include BillingHelpers
+class MetadataErrorController < ActionController::API
+  include ConnectRpc::Controller
+  connect_service Billing::V1::SERVICE_DESCRIPTOR,
+    handler: Billing::V1::BillingHandler.new,
+    interceptors: [MetadataErrorInterceptor.new]
+end
 
-  it "fails with deadline_exceeded when the deadline has already passed" do
-    context = ConnectRpc::Context.new(deadline: Time.now - 1)
-    result = build_dispatcher.invoke(BillingHelpers::SERVICE_NAME, "IngestUsage", ingest_request, context)
+RSpec.describe "error handling" do
+  def json_body(**overrides)
+    Billing::V1::IngestUsageRequest.encode_json(ingest_request(**overrides))
+  end
 
-    expect(result.success?).to be(false)
-    expect(result.error.code).to eq(:deadline_exceeded)
+  it "maps a configured exception to its Connect HTTP status" do
+    status, _headers, resp = call_connect(MappedErrorController, "IngestUsage", json_body, content_type: "application/json")
+
+    expect(status).to eq(503)
+    expect(JSON.parse(resp)["code"]).to eq("unavailable")
+  end
+
+  it "propagates an unmapped exception to the host middleware" do
+    expect { call_connect(UnmappedErrorController, "IngestUsage", json_body, content_type: "application/json") }
+      .to raise_error(DemoTimeout)
+  end
+
+  it "enforces connect-timeout-ms as a deadline_exceeded error" do
+    status, _headers, resp = call_connect(SlowController, "IngestUsage", json_body, content_type: "application/json", timeout_ms: 10)
+
+    expect(status).to eq(504)
+    expect(JSON.parse(resp)["code"]).to eq("deadline_exceeded")
+  end
+
+  it "sends handler response headers and trailers even on an error" do
+    status, headers, = call_connect(MetadataErrorController, "IngestUsage", json_body, content_type: "application/json")
+
+    expect(status).to eq(400)
+    expect(headers["x-custom-header"]).to eq("hval")
+    expect(headers["trailer-x-custom-trailer"]).to eq("tval")
   end
 end
