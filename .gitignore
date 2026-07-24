@@ -1,0 +1,7 @@
+/pkg/
+/tmp/
+*.gem
+Gemfile.lock
+
+# Conformance protos are regenerated with `buf generate` (see conformance/README.md).
+/conformance/gen/
