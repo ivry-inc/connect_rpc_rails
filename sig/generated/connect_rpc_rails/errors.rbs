@@ -1,0 +1,27 @@
+# Generated from lib/connect_rpc_rails/errors.rb with RBS::Inline
+
+module ConnectRpcRails
+  # A Connect protocol error. The code set and its HTTP status mapping are defined
+  # by the spec (https://connectrpc.com/docs/protocol/). Handlers raise these; the
+  # transport turns them into the wire error body.
+  class Error < StandardError
+    CODE_TO_HTTP_STATUS: Hash[Symbol, Integer]
+
+    attr_reader code: Symbol
+
+    attr_reader details: Array[untyped]
+
+    # : (Symbol, ?String?, ?details: Array[untyped]) -> void
+    def initialize: (Symbol, ?String?, ?details: Array[untyped]) -> void
+
+    # : () -> Integer
+    def http_status: () -> Integer
+
+    # : () -> Hash[Symbol, untyped]
+    def to_wire: () -> Hash[Symbol, untyped]
+
+    # A detail is a google.protobuf.Any; its Connect wire form is the bare message
+    # type name plus the serialized bytes as unpadded standard base64.
+    private def encode_detail: (untyped any) -> untyped
+  end
+end

@@ -1,0 +1,22 @@
+// Copyright 2026 IVRy Inc.
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+package greet.v1;
+
+// The service contract. In a real project `buf generate` (or `protoc --ruby_out`)
+// turns this into lib/greet_pb.rb; that generated file registers the descriptor in
+// the pool, and GreetController's `connect_service` reads the RPCs off it.
+service GreetService {
+  rpc SayHello(SayHelloRequest) returns (SayHelloResponse);
+}
+
+message SayHelloRequest {
+  string name = 1;
+  string preferred_language = 2;
+}
+
+message SayHelloResponse {
+  string greeting = 1;
+}

@@ -1,0 +1,7 @@
+# Copyright 2026 IVRy Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+version: v2
+plugins:
+  - remote: buf.build/protocolbuffers/ruby:v31.1
+    out: gen
