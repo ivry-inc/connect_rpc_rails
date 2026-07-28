@@ -18,6 +18,7 @@ Gem::Specification.new do |spec|
   spec.add_dependency "actionpack", ">= 7.0"
   spec.add_dependency "google-protobuf", "~> 4.26"
 
+  spec.add_development_dependency "puma", "~> 8.0"
   spec.add_development_dependency "rake", "~> 13.0"
   spec.add_development_dependency "rbs", "~> 4.0"
   spec.add_development_dependency "rbs-inline", "~> 0.14"

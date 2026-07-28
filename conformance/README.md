@@ -20,7 +20,9 @@ variant.
 
 ## Prerequisites (one-time)
 
-Needs Go on PATH. Install the runner and buf, and generate the conformance protos:
+The server-under-test runs from the bundle (Puma is a development dependency), so
+`bundle install` once. The runner itself needs Go on PATH — install it and buf, and
+generate the conformance protos:
 
 ```sh
 go install connectrpc.com/conformance/cmd/connectconformance@latest
@@ -35,7 +37,7 @@ buf generate buf.build/connectrpc/conformance   # writes gen/ (git-ignored)
 
 ```sh
 export PATH="$PATH:$(go env GOPATH)/bin"
-connectconformance --mode server --conf conformance/config.yaml -- ruby conformance/server.rb
+connectconformance --mode server --conf conformance/config.yaml -- bundle exec ruby conformance/server.rb
 ```
 
 Exit 0 means every in-scope case passed. Add `--trace` to inspect any exchange.
