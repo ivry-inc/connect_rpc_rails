@@ -21,7 +21,8 @@ module ConnectRpc
   #   end
   #
   # Routes are 1 RPC = 1 action (see ConnectRpc::Routing), so an unknown method is a
-  # plain Rails 404 and a non-POST is a routing failure — the controller never sees them.
+  # plain Rails 404. Routes match every verb, so a wrong-verb request does reach the
+  # controller and becomes a Connect-correct 405 (see #dispatch_connect_rpc).
   module Controller
     # Raised inside Timeout so it can't be confused with an unrelated Timeout::Error.
     class DeadlineExceeded < StandardError

@@ -32,7 +32,8 @@ module ConnectRpc
   #   end
   #
   # Routes are 1 RPC = 1 action (see ConnectRpc::Routing), so an unknown method is a
-  # plain Rails 404 and a non-POST is a routing failure — the controller never sees them.
+  # plain Rails 404. Routes match every verb, so a wrong-verb request does reach the
+  # controller and becomes a Connect-correct 405 (see #dispatch_connect_rpc).
   module Controller
     # Raised inside Timeout so it can't be confused with an unrelated Timeout::Error.
     class DeadlineExceeded < StandardError; end
@@ -107,7 +108,10 @@ module ConnectRpc
       return render(plain: "unsupported media type", status: 415) unless codec
 
       reject_unsupported_encoding
-      raise @connect_decode_error if @connect_decode_error
+      # A raw ParseError isn't a ConnectRpc::Error, so it would escape rescue_from and
+      # become a 500. A malformed body is client input: surface it as invalid_argument.
+      # (Don't echo the decoder message — it can quote payload fragments back.)
+      raise Error.new(:invalid_argument, "invalid request body") if @connect_decode_error
 
       message = run_connect_chain(rpc, @connect_request_message, @connect_context)
 
@@ -165,7 +169,15 @@ module ConnectRpc
         metadata[key[5..].downcase.tr("_", "-")] = value
       end
 
-      timeout_ms = metadata["connect-timeout-ms"]&.to_i
+      raw_timeout = metadata["connect-timeout-ms"]
+      # connect-timeout-ms is up to 10 ASCII digits per the protocol. String#to_i would
+      # coerce "abc" to 0 (an already-expired deadline → 504) and silently truncate
+      # "10abc" to 10; a malformed value is client input, so reject it as invalid_argument.
+      if raw_timeout && !/\A\d{1,10}\z/.match?(raw_timeout)
+        raise Error.new(:invalid_argument, "invalid connect-timeout-ms")
+      end
+
+      timeout_ms = raw_timeout && Integer(raw_timeout, 10)
       deadline = timeout_ms ? Time.now + (timeout_ms / 1000.0) : nil
       Context.new(metadata:, deadline:, timeout_ms:)
     end

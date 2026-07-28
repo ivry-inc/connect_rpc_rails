@@ -65,6 +65,22 @@ RSpec.describe ConnectRpc::Controller do
     expect(status).to eq(405)
   end
 
+  it "maps a malformed request body to invalid_argument rather than letting the ParseError escape" do
+    status, _headers, resp = call_connect(GreetRpcController, "SayHello", "{not json", content_type: "application/json", bearer: "valid-token")
+
+    expect(status).to eq(400)
+    expect(JSON.parse(resp)["code"]).to eq("invalid_argument")
+  end
+
+  it "rejects a malformed connect-timeout-ms as invalid_argument, not an expired deadline" do
+    body = Greet::V1::SayHelloRequest.encode_json(say_hello_request)
+
+    status, _headers, resp = call_connect(GreetRpcController, "SayHello", body, content_type: "application/json", bearer: "valid-token", timeout_ms: "abc")
+
+    expect(status).to eq(400)
+    expect(JSON.parse(resp)["code"]).to eq("invalid_argument")
+  end
+
   it "emits process_action.action_controller with the Connect method and the decoded request in params" do
     events = []
     subscriber = ActiveSupport::Notifications.subscribe("process_action.action_controller") do |*args|
