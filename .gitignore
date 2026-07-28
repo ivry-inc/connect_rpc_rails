@@ -5,3 +5,6 @@ Gemfile.lock
 
 # Conformance protos are regenerated with `buf generate` (see conformance/README.md).
 /conformance/gen/
+
+# Installed by `rbs collection install`; the lock file is what is checked in.
+/.gem_rbs_collection/

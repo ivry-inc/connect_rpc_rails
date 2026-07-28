@@ -149,6 +149,7 @@ spec/                     # RSpec: controller, routing, auth, error mapping
 rspec          # specs (controller, routing, auth, error mapping, deadline)
 rubocop        # Shopify ruleset
 rake rbs       # regenerate + validate sig/generated from inline annotations
+rake steep     # regenerate, then type check lib with Steep
 ```
 
 ## Types
@@ -157,6 +158,17 @@ The library carries [rbs-inline](https://github.com/soutaro/rbs-inline) annotati
 (`# rbs_inline: enabled`, `#:` method signatures). `rake rbs` transpiles them into
 `sig/generated/**/*.rbs` and runs `rbs validate`. Protobuf messages are typed
 `untyped` — in a typical project their `.rbs` comes from buf's `rbs` plugin.
+
+`rake steep` goes further and checks `lib` against those signatures. Dependency
+signatures come from [gem_rbs_collection](https://github.com/ruby/gem_rbs_collection);
+run `rbs collection install` once to populate `.gem_rbs_collection` from
+`rbs_collection.lock.yaml`. Note the collection's `actionpack` and `google-protobuf`
+signatures lag the versions this gem builds against, and much of that surface is
+`untyped` there, so Steep checks this library's own logic rather than its use of Rails.
+
+`ConnectRpcRails::Controller` is a mix-in, so `sig/manual/controller_self.rbs` declares
+what it is mixed into (`ActionController::API`) plus the class-level accessors
+`extend ClassMethods` installs — a shape RBS cannot infer from the module body.
 
 ## Deliberately out of scope
 

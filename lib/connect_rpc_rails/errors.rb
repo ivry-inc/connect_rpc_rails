@@ -47,7 +47,7 @@ module ConnectRpcRails
 
     #: () -> Hash[Symbol, untyped]
     def to_wire
-      body = {code: @code.to_s, message: message}
+      body = {code: @code.to_s, message: message} #: Hash[Symbol, untyped]
       body[:details] = @details.map { |any| encode_detail(any) } unless @details.empty?
       body
     end
