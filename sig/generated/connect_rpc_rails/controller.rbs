@@ -23,7 +23,9 @@ module ConnectRpcRails
   # Routes are 1 RPC = 1 action (see ConnectRpcRails::Routing), so an unknown method is a
   # plain Rails 404. Routes match every verb, so a wrong-verb request does reach the
   # controller and becomes a Connect-correct 405 (see #dispatch_connect_rpc).
-  module Controller
+  # @rbs module-self ActionController::API
+  # @rbs module-self _ConnectControllerSelf
+  module Controller : ActionController::API, _ConnectControllerSelf
     # Raised inside Timeout so it can't be confused with an unrelated Timeout::Error.
     class DeadlineExceeded < StandardError
     end
@@ -31,7 +33,9 @@ module ConnectRpcRails
     # : (untyped) -> void
     def self.included: (untyped) -> void
 
-    module ClassMethods
+    # @rbs module-self Module
+    # @rbs module-self _ConnectControllerSelf
+    module ClassMethods : Module, _ConnectControllerSelf
       attr_accessor connect_registration: ServiceRegistration
 
       attr_accessor connect_interceptors: Array[Interceptor]
@@ -70,7 +74,8 @@ module ConnectRpcRails
     # Builds the Context from headers and enforces connect-timeout-ms. Runs as an
     # around_action so the whole action (decode + interceptors + handler) is under
     # the deadline; the Error it raises is rendered by rescue_from.
-    private def enforce_connect_deadline: () ?{ (?) -> untyped } -> untyped
+    # : () { (?) -> untyped } -> untyped
+    private def enforce_connect_deadline: () { (?) -> untyped } -> untyped
 
     private def build_connect_context: () -> untyped
 
