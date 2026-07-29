@@ -1,0 +1,88 @@
+# Runs the same checks as `rake` and `rubocop` locally. No secrets required.
+name: PR Checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions: {}
+
+concurrency:
+  group: pr-checks-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  steep:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ruby/setup-ruby@95ef2b042f9d7a56d8268cba8559e2842e2ad01b # v1.321.0
+        with:
+          ruby-version: "3.4"
+          bundler-cache: true
+
+      # Keyed on the lock file, so the gem_rbs_collection clone is reused until a
+      # signature dependency actually moves.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .gem_rbs_collection
+          key: rbs-collection-${{ hashFiles('rbs_collection.lock.yaml') }}
+
+      # --frozen installs strictly from the lock file instead of regenerating it, so
+      # CI checks against the signature versions that were reviewed.
+      - name: rbs collection install
+        run: bundle exec rbs collection install --frozen
+
+      - name: regenerate inline signatures
+        run: bundle exec rbs-inline --output=sig/generated lib
+
+      # A `#:` annotation can change without `rake rbs` being run, which would leave
+      # the checked-in signatures stale and the type check checking the wrong shape.
+      - name: check sig/generated is up to date
+        run: git diff --exit-code sig/generated
+
+      - name: rbs validate
+        run: bundle exec rbs -I sig/generated -I sig/manual validate
+
+      - name: steep check
+        run: bundle exec steep check
+
+  rspec:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ruby/setup-ruby@95ef2b042f9d7a56d8268cba8559e2842e2ad01b # v1.321.0
+        with:
+          ruby-version: "3.4"
+          bundler-cache: true
+
+      - name: rspec
+        run: bundle exec rspec --format documentation
+
+  rubocop:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ruby/setup-ruby@95ef2b042f9d7a56d8268cba8559e2842e2ad01b # v1.321.0
+        with:
+          ruby-version: "3.4"
+          bundler-cache: true
+
+      - name: rubocop
+        run: bundle exec rubocop --format progress --format github --color
