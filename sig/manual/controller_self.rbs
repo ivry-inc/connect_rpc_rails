@@ -1,0 +1,18 @@
+# The class-level state ConnectRpcRails::Controller installs via `extend ClassMethods`.
+# `self.class` on the including controller can't be typed from the module body alone,
+# so the mix-in declares this as part of its self-type.
+module ConnectRpcRails
+  interface _ConnectControllerClass
+    def connect_registration: () -> ServiceRegistration
+
+    def connect_interceptors: () -> Array[Interceptor]
+
+    def connect_rpcs: () -> Hash[String, untyped]
+  end
+
+  interface _ConnectControllerSelf
+    def class: () -> _ConnectControllerClass
+
+    def dispatch_connect_rpc: (ServiceRegistration::Rpc) -> void
+  end
+end

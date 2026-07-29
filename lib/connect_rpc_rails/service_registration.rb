@@ -38,9 +38,9 @@ module ConnectRpcRails
       end
     end
 
-    #: (String) -> Rpc?
-    def rpc(name)
-      @rpcs[name]
+    #: () -> Array[Rpc]
+    def rpcs
+      @rpcs.values
     end
   end
 end

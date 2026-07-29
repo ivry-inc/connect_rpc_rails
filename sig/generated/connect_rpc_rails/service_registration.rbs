@@ -26,7 +26,7 @@ module ConnectRpcRails
     # : (untyped descriptor, untyped handler) -> void
     def initialize: (untyped descriptor, untyped handler) -> void
 
-    # : (String) -> Rpc?
-    def rpc: (String) -> Rpc?
+    # : () -> Array[Rpc]
+    def rpcs: () -> Array[Rpc]
   end
 end

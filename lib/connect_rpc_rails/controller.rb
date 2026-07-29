@@ -34,6 +34,8 @@ module ConnectRpcRails
   # Routes are 1 RPC = 1 action (see ConnectRpcRails::Routing), so an unknown method is a
   # plain Rails 404. Routes match every verb, so a wrong-verb request does reach the
   # controller and becomes a Connect-correct 405 (see #dispatch_connect_rpc).
+  # @rbs module-self ActionController::API
+  # @rbs module-self _ConnectControllerSelf
   module Controller
     # Raised inside Timeout so it can't be confused with an unrelated Timeout::Error.
     class DeadlineExceeded < StandardError; end
@@ -46,6 +48,8 @@ module ConnectRpcRails
       base.around_action(:enforce_connect_deadline)
     end
 
+    # @rbs module-self Module
+    # @rbs module-self _ConnectControllerSelf
     module ClassMethods
       attr_accessor :connect_registration #: ServiceRegistration
       attr_accessor :connect_interceptors #: Array[Interceptor]
@@ -58,10 +62,10 @@ module ConnectRpcRails
         self.connect_interceptors = interceptors
         self.connect_rpcs = {}
 
-        descriptor.each do |method|
-          rpc = connect_registration.rpc(method.name)
+        connect_registration.rpcs.each do |rpc|
           connect_rpcs[rpc.handler_method] = rpc
-          define_method(rpc.handler_method) { dispatch_connect_rpc(rpc) }
+          # The block runs as an instance method, not on the singleton Steep sees here.
+          define_method(rpc.handler_method) { dispatch_connect_rpc(rpc) } # steep:ignore NoMethod
         end
       end
     end
@@ -146,6 +150,7 @@ module ConnectRpcRails
     # Builds the Context from headers and enforces connect-timeout-ms. Runs as an
     # around_action so the whole action (decode + interceptors + handler) is under
     # the deadline; the Error it raises is rendered by rescue_from.
+    #: () { (?) -> untyped } -> untyped
     private def enforce_connect_deadline(&block)
       @connect_context = build_connect_context
       deadline = @connect_context.deadline
@@ -166,7 +171,7 @@ module ConnectRpcRails
       request.headers.each do |key, value|
         next unless key.is_a?(String) && key.start_with?("HTTP_")
 
-        metadata[key[5..].downcase.tr("_", "-")] = value
+        metadata[key.delete_prefix("HTTP_").downcase.tr("_", "-")] = value
       end
 
       raw_timeout = metadata["connect-timeout-ms"]
