@@ -11,16 +11,14 @@ require "active_record/railtie"
 require "action_controller/railtie"
 require "connect_rpc_rails"
 
-# The protobuf descriptor (normally the output of `buf generate` / `protoc`) has to be
-# in the pool before the controller's `connect_service` reads it at class-load time.
+# The protobuf descriptor (normally the output of `buf generate` / `protoc`) has to be in
+# the pool before `connect_service` looks the service up by name — in the routes file and
+# at controller load.
 require_relative "../lib/greet_pb"
 
 module Greet
   class Application < Rails::Application
-    config.load_defaults 7.2
+    config.load_defaults 8.1
     config.api_only = true
-
-    # Autoload the handlers and interceptors in app/rpc alongside app/controllers.
-    config.autoload_paths << root.join("app/rpc")
   end
 end

@@ -4,28 +4,64 @@ module ConnectRpcRails
   # Connect unary transport as an ActionController::API mix-in.
   #
   # Include this in an `ActionController::API` subclass and call `connect_service`:
-  # it generates one Rails *action* per RPC method, so every call flows through the
-  # normal controller lifecycle. That is the whole point — `process_action.action_controller`
-  # fires, so the entire Rails observability ecosystem (Datadog resource naming,
-  # Sentry transactions, lograge, the "Completed 200 in Xms" request log) lights up
-  # for free. The handler stays a plain Ruby object holding domain logic; the
-  # generated action is a thin adapter: decode the Connect body, run the interceptor
-  # chain into the handler, encode the reply. Errors become Connect wire errors in
-  # one place (`rescue_from`), the deadline is one `around_action`.
+  # each RPC in the descriptor is one Rails *action* on that controller, so every call
+  # flows through the normal controller lifecycle. That is the whole point —
+  # `process_action.action_controller` fires, so the entire Rails observability
+  # ecosystem (Datadog resource naming, Sentry transactions, lograge, the
+  # "Completed 200 in Xms" request log) lights up for free. The transport wraps the
+  # action rather than generating it: decode the Connect body, call the action, encode the
+  # reply. Errors become Connect wire errors in one place (`rescue_from`), the deadline is
+  # one `around_action`.
   #
   #   class GreetController < ActionController::API
   #     include ConnectRpcRails::Controller
-  #     connect_service Greet::V1::SERVICE_DESCRIPTOR,
-  #       handler: Greet::V1::GreetHandler.new,
-  #       interceptors: [Greet::V1::AuthInterceptor.new(&VERIFIER)]
+  #     include BearerAuthentication
+  #     connect_service "greet.v1.GreetService"
+  #
+  #     def say_hello
+  #       SayHelloResponse.new(greeting: "Hello, #{connect_request.name}!")
+  #     end
   #   end
   #
-  # Routes are 1 RPC = 1 action (see ConnectRpcRails::Routing), so an unknown method is a
-  # plain Rails 404. Routes match every verb, so a wrong-verb request does reach the
-  # controller and becomes a Connect-correct 405 (see #dispatch_connect_rpc).
+  # An action takes no arguments, like every other Rails action: the decoded request is
+  # `connect_request`, read the way `params` is read in an HTTP controller. It is an
+  # ordinary instance method, so it gets the per-request instance Rails already builds for
+  # every action — nothing holding request state outlives the request. There is
+  # deliberately no handler object registered on the controller class: that one instance
+  # would be shared by every request in the process.
+  #
+  # A Connect call is an HTTP request, so cross-cutting concerns are Rails callbacks and
+  # nothing else: `before_action` for auth (writing an ivar, not a context bag),
+  # `around_action` to wrap a call, `rescue_from` (or `map_connect_errors`) to turn a
+  # domain exception into a Connect code. The decode happens before the callbacks run, so
+  # a `before_action` can already read `connect_request`. There is no interceptor layer:
+  # callbacks do the same job with `only:`/`except:`, inheritance and `skip_*` on top.
+  #
+  # Exceptions the host app already classifies need no mapping at all: Rails keeps that
+  # classification in `config.action_dispatch.rescue_responses`, which every railtie and
+  # gem registers into (`ActiveRecord::RecordNotFound` is `:not_found` there), so including
+  # this module installs a Connect code for each of those entries. `map_connect_errors` is
+  # for the ones Rails doesn't know about, and overrides these.
+  #
+  # Routes are 1 RPC = 1 action, drawn per service from the descriptor (see
+  # ConnectRpcRails::Routing). A declared RPC the controller doesn't implement is answered
+  # `unimplemented` by #action_missing; a method the descriptor never declared lands on the
+  # routes' catch-all, #connect_unknown_method, and is a 404. Routes match every verb, so a
+  # wrong-verb request does reach the controller and becomes a Connect-correct 405.
   # @rbs module-self ActionController::API
   # @rbs module-self _ConnectControllerSelf
   module Controller : ActionController::API, _ConnectControllerSelf
+    # The action and path parameter the routes DSL points its per-service catch-all at.
+    UNKNOWN_METHOD_ACTION: ::String
+
+    UNKNOWN_METHOD_PARAM: ::String
+
+    # The one `rescue_responses` entry that doesn't become a Connect error: #action_missing
+    # raises ActionNotFound for a name that isn't an RPC, which means the app routed
+    # something to an action this controller doesn't have. That is a misconfiguration for
+    # the host's error handling to surface, not a result to hand a caller.
+    RESCUE_RESPONSE_EXCLUSIONS: untyped
+
     # Raised inside Timeout so it can't be confused with an unrelated Timeout::Error.
     class DeadlineExceeded < StandardError
     end
@@ -33,17 +69,45 @@ module ConnectRpcRails
     # : (untyped) -> void
     def self.included: (untyped) -> void
 
-    # @rbs module-self Module
-    # @rbs module-self _ConnectControllerSelf
-    module ClassMethods : Module, _ConnectControllerSelf
-      attr_accessor connect_registration: ServiceRegistration
+    # Gives every exception Rails already assigns an HTTP status a Connect code, so an app
+    # doesn't restate a mapping the framework ships. Registered by class *name*, which is
+    # both what `rescue_responses` is keyed by and what keeps this from loading the classes
+    # (`rescue_from` resolves the name when it has to rescue something).
+    #
+    # This reads `rescue_responses` once, when the controller is loaded — in a Rails app
+    # that is after the initializers have merged the app's own entries in.
+    # : (untyped) -> void
+    def self.install_rescue_response_defaults: (untyped) -> void
 
-      attr_accessor connect_interceptors: Array[Interceptor]
+    # @rbs module-self Module
+    # @rbs module-self _ConnectControllerClass
+    module ClassMethods : Module, _ConnectControllerClass
+      attr_accessor connect_registration: ServiceRegistration
 
       attr_accessor connect_rpcs: Hash[String, untyped]
 
-      # : (untyped descriptor, handler: untyped, ?interceptors: Array[Interceptor]) -> void
-      def connect_service: (untyped descriptor, handler: untyped, ?interceptors: Array[Interceptor]) -> void
+      # Declares which Connect service this controller serves, named as the `.proto` names
+      # it: `connect_service "greet.v1.GreetService"`. The string is looked up in the
+      # descriptor pool, so it greps straight to the protobuf definition (and back).
+      # : (String | untyped service) -> void
+      def connect_service: (String | untyped service) -> void
+
+      # Turns domain exceptions into Connect errors for every RPC on the controller:
+      #
+      #   map_connect_errors MyDomain::Invalid => :invalid_argument,
+      #     MyDomain::QuotaReached => :resource_exhausted
+      #
+      # Only for exceptions Rails doesn't already classify — anything in
+      # `config.action_dispatch.rescue_responses` has a code without being named here (see
+      # .install_rescue_response_defaults) — or to override the code one of those got.
+      #
+      # This is `rescue_from` with the conversion filled in — each class gets its own
+      # handler, so nothing is blanket-rescued and an unmapped exception still propagates
+      # to the host's error middleware. The handler renders rather than re-raising because
+      # Rails calls one `rescue_from` handler per exception: an Error raised inside a
+      # handler would escape instead of reaching the one that renders the wire error.
+      # : (Hash[Class, Symbol]) -> void
+      def map_connect_errors: (Hash[Class, Symbol]) -> void
     end
 
     # Connect actions decode the body themselves and never read `params`, so skip
@@ -59,27 +123,101 @@ module ConnectRpcRails
     # :format key into params).
     def process_action: (*untyped) -> untyped
 
+    # The RPC method is the controller's own method, so the transport wraps dispatch
+    # instead of defining the action body: `send_action` is
+    # Rails' documented seam for "change how action methods are called".
+    private def send_action: (untyped action, *untyped args) -> untyped
+
+    # The service-prefix catch-all the routes DSL draws after the RPC routes. Every method
+    # the descriptor declares has its own route, so reaching here means this one isn't part
+    # of the service's contract at all: a 404 whatever the verb — rendered rather than
+    # raised as a RoutingError, so it doesn't depend on the host having Rails' exception
+    # middleware in the stack. No body is decoded for it either.
+    def connect_unknown_method: () -> untyped
+
+    # Every RPC the descriptor declares is routed, whether or not this controller has the
+    # method, because what the service serves is the descriptor's business and not the
+    # router's. A routed RPC with no action is exactly the case Connect answers
+    # `unimplemented`, and Rails' own hook for "this action doesn't exist" is where that is
+    # answered. An action name that isn't an RPC at all raises what Rails would have raised
+    # had this hook not been defined.
+    private def action_missing: (untyped name) -> untyped
+
+    # Transport preconditions, prepended so they run ahead of any application callback: a
+    # wrong verb or a body nothing can read is answered the way the protocol says instead
+    # of being handed to auth (or anything else the controller declared) first. Halting
+    # with `render` is Rails' own way to stop a callback chain.
+    private def validate_connect_request: () -> untyped
+
+    # : () -> String
+    private def connect_method_param: () -> String
+
     private def connect_request_params: () -> untyped
 
+    # The transport preconditions have all passed by the time this runs (see
+    # #validate_connect_request), so this is the wire round-trip and nothing else. The RPC
+    # runs on this controller instance — the one Rails built for this request — and takes
+    # no arguments, like any other action. Only implemented methods are routed (the routes
+    # DSL checks that at boot), so there is no missing-method case.
     private def dispatch_connect_rpc: (untyped rpc) -> untyped
+
+    # The codec for this call's content-type. Never missing once the action runs:
+    # #validate_connect_request answers a content-type no codec handles with a 415.
+    # : () -> Codec::_Codec
+    private def connect_codec: () -> Codec::_Codec
 
     # Connect rejects unsupported request compression with `unimplemented`, advertising
     # what it can accept.
     private def reject_unsupported_encoding: () -> untyped
 
-    # Same chain shape as the old standalone dispatcher: interceptors wrap a terminal
-    # that calls the PORO handler, so the interceptor code is unchanged.
-    private def run_connect_chain: (untyped rpc, untyped request_message, untyped context) -> untyped
+    # The decoded request message, for the action to read the way an HTTP action reads
+    # `params`. Assigned during decode, so callbacks see it too.
+    # : () -> untyped
+    private def connect_request: () -> untyped
 
-    # Builds the Context from headers and enforces connect-timeout-ms. Runs as an
-    # around_action so the whole action (decode + interceptors + handler) is under
-    # the deadline; the Error it raises is rendered by rescue_from.
+    # Request metadata: the request's HTTP headers, downcased and dasherized, which is
+    # what Connect metadata is on the wire. Response metadata needs no helper — leading
+    # metadata is `response.headers`.
+    # : () -> Hash[String, String]
+    private def connect_metadata: () -> Hash[String, String]
+
+    # Trailing metadata to send. Unary Connect puts trailers in the response as
+    # `trailer-`-prefixed headers, so this collects them and #apply_connect_trailers does
+    # the prefixing — a caller writes `connect_trailers["x-audit"] = ["1"]` and doesn't
+    # encode the wire form itself.
+    # : () -> Hash[String, Array[String]]
+    private def connect_trailers: () -> Hash[String, Array[String]]
+
+    # Rack joins repeated headers with a newline, which is also how multi-value Connect
+    # metadata is sent.
+    private def apply_connect_trailers: () -> untyped
+
+    # The deadline this call must finish by, from `connect-timeout-ms`, or nil when the
+    # caller sent no timeout. The library enforces it; an RPC reads it to budget its own
+    # downstream calls.
+    # : () -> Time?
+    private def connect_deadline: () -> Time?
+
+    # : () -> Integer?
+    private def connect_timeout_ms: () -> Integer?
+
+    # Enforces connect-timeout-ms. Runs as an around_action so the whole action (the
+    # callbacks and the RPC) is under the deadline; the Error it raises is rendered by
+    # rescue_from.
     # : () { (?) -> untyped } -> untyped
     private def enforce_connect_deadline: () { (?) -> untyped } -> untyped
 
-    private def build_connect_context: () -> untyped
+    # The handler `map_connect_errors` installs: the mapping lives on the class, so the
+    # code for the exception at hand is looked up rather than baked into a closure.
+    private def render_mapped_connect_error: (untyped exception) -> untyped
 
-    private def apply_connect_metadata: (untyped context) -> untyped
+    # The handler installed for every `rescue_responses` entry. The status is read off the
+    # nearest ancestor the registry names, since `rescue_from` matches subclasses too and a
+    # subclass isn't a key (an `ActiveRecord::RecordNotUnique` is classified as the
+    # `StatementInvalid` it descends from). Read with `fetch`, because the registry answers
+    # anything at all with a default of :internal_server_error — which would stop the walk
+    # on the first ancestor and call every subclass a 500.
+    private def render_rescue_response_error: (untyped exception) -> untyped
 
     private def render_connect_error: (untyped error) -> untyped
 
