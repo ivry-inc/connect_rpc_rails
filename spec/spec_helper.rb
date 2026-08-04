@@ -8,18 +8,35 @@ $LOAD_PATH.unshift File.expand_path("../lib", __dir__)
 require "rack/mock"
 require "connect_rpc_rails"
 
+# The specs drive Action Controller and Action Dispatch directly, with no Rails app to boot
+# the Railtie that would normally do this.
+ConnectRpcRails.install!
+
 require_relative "../examples/greet/lib/greet_pb"
-require_relative "../examples/greet/app/rpc/greet_handler"
-require_relative "../examples/greet/app/rpc/auth_interceptor"
+require_relative "../examples/greet/app/controllers/concerns/bearer_authentication"
 
 # Keep controller instrumentation quiet in specs.
 ActionController::Base.logger = nil
+
+# The greeting logic the spec controllers implement as their own RPC action, mirroring
+# the example service (which does the same inline).
+module SayHelloRpc
+  SALUTATIONS = {"es" => "Hola", "fr" => "Bonjour", "ja" => "こんにちは"}.freeze
+
+  def say_hello
+    raise ConnectRpcRails::Error.new(:invalid_argument, "name is required") if connect_request.name.empty?
+
+    salutation = SALUTATIONS.fetch(connect_request.preferred_language, "Hello")
+    Greet::V1::SayHelloResponse.new(greeting: "#{salutation}, #{connect_request.name}!")
+  end
+end
 
 # Shared fixtures/helpers for exercising the example greet service through a
 # ConnectRpcRails::Controller.
 module GreetHelpers
   SERVICE_NAME = "greet.v1.GreetService"
-  VERIFIER = Greet::V1::TOKEN_VERIFIER
+  # Stand-in for real bearer verification, as in the example service.
+  VERIFIER = ->(token) { token == "valid-token" ? "user:99" : nil }
 
   def say_hello_request(**overrides)
     Greet::V1::SayHelloRequest.new(

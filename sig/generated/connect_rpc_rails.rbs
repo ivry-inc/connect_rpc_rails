@@ -1,8 +1,15 @@
 # Generated from lib/connect_rpc_rails.rb with RBS::Inline
 
 module ConnectRpcRails
-  # "SayHello" -> "say_hello". Maps a Connect method name to its Ruby handler
-  # method so dispatch stays reflection-driven (no per-service codegen).
+  # Installs what the gem adds to Action Dispatch: the routes DSL, and Connect's binary
+  # content-type so `request.format` (and thus the instrumentation payload / request log)
+  # reports :proto instead of defaulting to :html. In a Rails app the Railtie calls this
+  # during boot; a plain Rack host (or a spec) calls it itself.
+  # : () -> void
+  def self.install!: () -> void
+
+  # "SayHello" -> "say_hello". Maps a Connect method name to the controller action
+  # implementing it, so dispatch stays reflection-driven (no per-service codegen).
   # : (String) -> String
   def self.underscore: (String) -> String
 end

@@ -1,0 +1,15 @@
+# The RPCs in this example don't read a database; Active Record is loaded because a real
+# service has one behind it, and because the controller maps ActiveRecord::RecordNotFound
+# to a Connect code. SQLite in memory is enough to boot.
+default: &default
+  adapter: sqlite3
+  pool: 5
+  timeout: 5000
+
+development:
+  <<: *default
+  database: ":memory:"
+
+test:
+  <<: *default
+  database: ":memory:"

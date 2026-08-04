@@ -3,6 +3,10 @@
 *.gem
 Gemfile.lock
 
+# Written when the example app boots.
+/examples/greet/log/
+/examples/greet/tmp/
+
 # Conformance protos are regenerated with `buf generate` (see conformance/README.md).
 /conformance/gen/
 
