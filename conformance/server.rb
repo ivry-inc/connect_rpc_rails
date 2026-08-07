@@ -16,8 +16,11 @@ require "connect_rpc_rails"
 require "action_dispatch"
 require "connectrpc/conformance/v1/server_compat_pb"
 require "connectrpc/conformance/v1/service_pb"
-require_relative "service_handler"
+require_relative "service_implementation"
 require "puma"
+
+# A bare Rack host, so there is no Railtie to install the routes DSL.
+ConnectRpcRails.install!
 
 V1 = Connectrpc::Conformance::V1
 
@@ -31,16 +34,19 @@ $stdout.reopen($stderr)
 length = $stdin.read(4).unpack1("N")
 _request = V1::ServerCompatRequest.decode($stdin.read(length))
 
-DESCRIPTOR = Google::Protobuf::DescriptorPool.generated_pool.lookup("connectrpc.conformance.v1.ConformanceService")
+SERVICE_NAME = "connectrpc.conformance.v1.ConformanceService"
 
 class ConformanceController < ActionController::API
   include ConnectRpcRails::Controller
-  connect_service DESCRIPTOR, handler: Conformance::ServiceHandler.new
+  include Conformance::ServiceImplementation
+  connect_service SERVICE_NAME
 end
 
+# Only Unary is implemented; the rest of the service answers `unimplemented`, which is what
+# the conformance suite expects of a server that doesn't serve them.
 routes = ActionDispatch::Routing::RouteSet.new
 routes.draw do
-  ConnectRpcRails::Routing.mount(self, ConformanceController)
+  connect_service SERVICE_NAME => "conformance"
 end
 
 server = Puma::Server.new(routes)

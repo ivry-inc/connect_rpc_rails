@@ -5,10 +5,11 @@
 
 class GreetRpcController < ActionController::API
   include ConnectRpcRails::Controller
+  include BearerAuthentication
+  include SayHelloRpc
 
-  connect_service Greet::V1::SERVICE_DESCRIPTOR,
-    handler: Greet::V1::GreetHandler.new,
-    interceptors: [Greet::V1::AuthInterceptor.new(&GreetHelpers::VERIFIER)]
+  connect_service GreetHelpers::SERVICE_NAME
+  self.token_verifier = GreetHelpers::VERIFIER
 end
 
 RSpec.describe ConnectRpcRails::Controller do

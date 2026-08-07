@@ -1,0 +1,25 @@
+# The Rails APIs the gem touches that gem_rbs_collection's actionpack/activesupport
+# signatures don't declare. railties itself has no published signatures, so `Rails` and
+# `Rails::Railtie` are only stubbed there (activesupport's patch.rbs) as empty.
+module Rails
+  def self.application: () -> untyped
+
+  class Railtie
+    def self.initializer: (String, **untyped) ?{ (?untyped) -> void } -> void
+  end
+end
+
+module ActionDispatch
+  class ExceptionWrapper
+    # Keyed by exception class *name*, valued by an HTTP status (a Rack symbol or an
+    # integer). The Hash answers an unregistered name with :internal_server_error, so read
+    # it with `fetch` when a miss has to be distinguishable.
+    def self.rescue_responses: () -> Hash[String, Symbol | Integer]
+  end
+end
+
+module AbstractController
+  class ActionNotFound < StandardError
+    def initialize: (?String? message, ?untyped controller, ?String? action) -> void
+  end
+end
