@@ -5,9 +5,17 @@ module ConnectRpcRails
   interface _ConnectControllerClass
     def connect_registration: () -> ServiceRegistration
 
-    def connect_interceptors: () -> Array[Interceptor]
-
     def connect_rpcs: () -> Hash[String, untyped]
+
+    def name: () -> String?
+
+    # ActiveSupport::Rescuable, and the class_attribute `map_connect_errors` stores its
+    # mapping in.
+    def rescue_from: (untyped, with: Symbol) -> void
+
+    def connect_error_mapping: () -> Hash[Class, Symbol]
+
+    def connect_error_mapping=: (Hash[Class, Symbol]) -> void
   end
 
   interface _ConnectControllerSelf

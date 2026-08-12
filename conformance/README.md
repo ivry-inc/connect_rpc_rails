@@ -47,6 +47,7 @@ Exit 0 means every in-scope case passed. Add `--trace` to inspect any exchange.
 - `server.rb` — the server-under-test: reads a `ServerCompatRequest` on stdin,
   boots the `ConnectRpcRails::Controller` (serving `ConformanceService`) mounted through
   an `ActionDispatch` `RouteSet` on Puma, writes the port back on stdout.
-- `service_handler.rb` — `ConformanceService` implemented against the library
-  (only `Unary`; the rest raise `unimplemented`).
+- `service_implementation.rb` — `ConformanceService` implemented against the library
+  (only `Unary`, which is also the only method the routes declare; the rest of the service
+  is answered `unimplemented` by the routes' catch-all).
 - `config.yaml` — restricts the suite to the implemented surface.

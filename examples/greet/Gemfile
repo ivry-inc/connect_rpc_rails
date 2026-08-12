@@ -1,0 +1,11 @@
+# frozen_string_literal: true
+
+# The example is a real Rails app, so it has its own bundle: the gem itself only depends
+# on actionpack, and pulling full Rails into the gem's development bundle to boot an
+# example would be backwards.
+source "https://rubygems.org"
+
+gem "connect_rpc_rails", path: "../.."
+gem "puma", "~> 8.0"
+gem "rails", "~> 8.0"
+gem "sqlite3", "~> 2.0"
