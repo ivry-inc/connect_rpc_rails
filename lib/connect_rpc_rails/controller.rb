@@ -78,6 +78,10 @@ module ConnectRpcRails
       base.extend(ClassMethods)
       no_mapping = {} #: Hash[Class, Symbol]
       base.class_attribute(:connect_error_mapping, default: no_mapping)
+      # class_attribute, not a singleton attr_accessor: a base controller declaring the
+      # service has to be readable from the subclasses that serve one RPC each.
+      base.class_attribute(:connect_registration)
+      base.class_attribute(:connect_rpcs)
       # Registered first, so both the Error handler and anything `map_connect_errors` adds
       # later take precedence: Rails picks the most recently registered matching handler.
       install_rescue_response_defaults(base)
@@ -105,13 +109,12 @@ module ConnectRpcRails
     # @rbs module-self Module
     # @rbs module-self _ConnectControllerClass
     module ClassMethods
-      attr_accessor :connect_registration #: ServiceRegistration
-
-      attr_accessor :connect_rpcs #: Hash[String, untyped]
-
       # Declares which Connect service this controller serves, named as the `.proto` names
       # it: `connect_service "greet.v1.GreetService"`. The string is looked up in the
       # descriptor pool, so it greps straight to the protobuf definition (and back).
+      #
+      # Subclasses inherit the declaration, so a service split across a controller per RPC
+      # declares it once on their shared base class.
       #: (String | untyped service) -> void
       def connect_service(service)
         self.connect_registration = ServiceRegistration.new(service)

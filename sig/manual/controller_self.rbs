@@ -3,9 +3,15 @@
 # so the mix-in declares this as part of its self-type.
 module ConnectRpcRails
   interface _ConnectControllerClass
+    # class_attribute, so a base controller's declaration is readable from a subclass
+    # serving one RPC of the service.
     def connect_registration: () -> ServiceRegistration
 
+    def connect_registration=: (ServiceRegistration) -> void
+
     def connect_rpcs: () -> Hash[String, untyped]
+
+    def connect_rpcs=: (Hash[String, untyped]) -> void
 
     def name: () -> String?
 
