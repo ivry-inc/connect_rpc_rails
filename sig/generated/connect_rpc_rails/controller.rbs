@@ -82,13 +82,12 @@ module ConnectRpcRails
     # @rbs module-self Module
     # @rbs module-self _ConnectControllerClass
     module ClassMethods : Module, _ConnectControllerClass
-      attr_accessor connect_registration: ServiceRegistration
-
-      attr_accessor connect_rpcs: Hash[String, untyped]
-
       # Declares which Connect service this controller serves, named as the `.proto` names
       # it: `connect_service "greet.v1.GreetService"`. The string is looked up in the
       # descriptor pool, so it greps straight to the protobuf definition (and back).
+      #
+      # Subclasses inherit the declaration, so a service split across a controller per RPC
+      # declares it once on their shared base class.
       # : (String | untyped service) -> void
       def connect_service: (String | untyped service) -> void
 

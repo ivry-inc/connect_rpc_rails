@@ -54,6 +54,27 @@ method *is* an action, so Rails' per-request instance is the only lifecycle in p
 Domain logic that shouldn't live in a controller belongs in an ordinary object the
 action calls, constructed inside the action like anywhere else in Rails.
 
+**A service can be one controller or a controller per RPC.** A whole service behind one
+class is the default. When its methods have little in common — different authorization,
+different validation — give each its own controller with a block, and each RPC's callbacks
+are its own rather than the service's with `only:`:
+
+```ruby
+# config/routes.rb
+connect_service "greet.v1.GreetService" do
+  rpc "SayHello" => :greet_say_hello
+  rpc "SayGoodbye" => :greet_say_goodbye
+end
+```
+
+Every mapped name has to be one the descriptor declares, so a typo or a rename fails at boot
+instead of drawing a route nothing reaches. The mapping does not have to cover the service:
+an RPC left out is still routed — to the first mapped controller, which serves the service
+but not that method, so it is answered `unimplemented` exactly as a declared RPC nobody
+implements always is. The controllers declare the service once on a shared base class —
+`connect_service` is inherited — and the service-prefix catch-all is drawn at the first of
+them, since answering it is a 404 and nothing else.
+
 **Routes come from the descriptor, per service.** The routes file names the service the
 way the `.proto` does and points it at a controller as a string, exactly like any other
 Rails route — so drawing the routes doesn't load the controller class, and both ends of the
