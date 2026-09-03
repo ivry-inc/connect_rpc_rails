@@ -157,6 +157,27 @@ because a hand-written `rescue_from` can't simply `raise` a `ConnectRpcRails::Er
 Rails calls one handler per exception, so the raise would escape instead of reaching the
 handler that renders the wire error.
 
+**Everything that escapes is the exceptions app's job.** An exception raised before
+dispatch — a routing error, an unreadable body, a middleware failing — never reaches a
+controller, and the host's `config.exceptions_app` would answer it in a shape a Connect
+client reads as a malformed response. `ConnectRpcRails::ExceptionsApp` wraps that app and
+answers the Connect protocol's error shape for a request carrying
+`connect-protocol-version`, passing everything else through untouched:
+
+```ruby
+config.exceptions_app = ConnectRpcRails::ExceptionsApp.new(MyExceptions.new(Rails.public_path))
+```
+
+The code comes from the status `rescue_responses` assigned the exception, so the app
+configures its classification in one place; the message is the status's own text, never
+the exception's. Override `#connect_error_for` in a subclass to stamp every error with a
+detail of your own (a `google.rpc.RequestInfo` holding the request id, say).
+
+Because escaping is now answered correctly, an app needs no blanket
+`rescue_from StandardError` to keep the protocol: let the exception propagate and Rails'
+request-error logging — and the error reporters subscribed to it — see it the way they see
+any other.
+
 ## Conformance
 
 The official [connectrpc/conformance](https://github.com/connectrpc/conformance) suite
@@ -187,6 +208,7 @@ lib/connect_rpc_rails/
   service_registration.rb # descriptor -> RPC table (reflection)
   codec.rb                # JSON / proto, via google-protobuf
   errors.rb               # Connect codes -> HTTP status, wire error body
+  exceptions_app.rb       # config.exceptions_app wrapper: Connect error shape for what escapes
 examples/greet/           # the example as a real, bootable Rails app (own Gemfile + config.ru)
   app/controllers/greet_controller.rb    # connect_service + the RPC action
   app/controllers/concerns/bearer_authentication.rb  # authN as a before_action + stub verifier

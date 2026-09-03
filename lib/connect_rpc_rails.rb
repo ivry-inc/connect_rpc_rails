@@ -10,6 +10,7 @@ require 'connect_rpc_rails/codec'
 require 'connect_rpc_rails/service_registration'
 require 'connect_rpc_rails/controller'
 require 'connect_rpc_rails/routing'
+require 'connect_rpc_rails/exceptions_app'
 
 module ConnectRpcRails
   # Installs what the gem adds to Action Dispatch: the routes DSL, and Connect's binary
