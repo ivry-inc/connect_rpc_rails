@@ -1,0 +1,52 @@
+amends "package://github.com/jdx/hk/releases/download/v1.53.0/hk@1.53.0#/Config.pkl"
+import "package://github.com/jdx/hk/releases/download/v1.53.0/hk@1.53.0#/Builtins.pkl"
+
+// sig/generated is rbs-inline output and conformance/gen is buf output; both are
+// checked as generated rather than linted.
+exclude = List(
+  "sig/generated/**",
+  "conformance/gen/**",
+  "vendor/**",
+  "examples/greet/log/**",
+  "examples/greet/tmp/**",
+)
+
+local linters = new Mapping<String, Step> {
+  ["rubocop"] {
+    glob = List("**/*.rb", "**/*.gemspec", "**/*.rake", "Rakefile", "Gemfile")
+    check = "bundle exec rubocop --force-exclusion {{files}}"
+    fix = "bundle exec rubocop --force-exclusion --autocorrect {{files}}"
+    batch = true
+  }
+  ["steep"] {
+    glob = List("lib/**/*.rb", "sig/**/*.rbs", "Steepfile")
+    check = "bundle exec steep check"
+  }
+  ["actionlint"] = Builtins.actionlint
+  ["check-added-large-files"] = Builtins.check_added_large_files
+  ["check-byte-order-marker"] = Builtins.check_byte_order_marker
+  ["check-merge-conflict"] = Builtins.check_merge_conflict
+  ["check-symlinks"] = Builtins.check_symlinks
+  ["detect-private-key"] = Builtins.detect_private_key
+  ["mixed-line-ending"] = Builtins.mixed_line_ending
+  ["newlines"] = Builtins.newlines
+  ["trailing-whitespace"] = Builtins.trailing_whitespace
+  ["zizmor"] = Builtins.zizmor
+}
+
+hooks {
+  ["pre-commit"] {
+    fix = true
+    stash = "git"
+    steps {
+      ...linters
+    }
+  }
+  ["fix"] {
+    fix = true
+    steps = linters
+  }
+  ["check"] {
+    steps = linters
+  }
+}

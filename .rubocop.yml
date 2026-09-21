@@ -3,6 +3,7 @@ inherit_gem:
 
 AllCops:
   TargetRubyVersion: 3.4
+  SuggestExtensions: false
   Exclude:
     - "conformance/gen/**/*"
 
