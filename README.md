@@ -181,7 +181,7 @@ any other.
 ## Conformance
 
 The official [connectrpc/conformance](https://github.com/connectrpc/conformance) suite
-lives in [`conformance/`](conformance/) and passes **86/86** (Connect + unary) against
+lives in [`conformance/`](conformance/) and passes **84/84** (Connect + unary) against
 the `ActionController::API` transport, with the server-under-test mounted through an
 `ActionDispatch` `RouteSet` — including error details, response headers/trailers (on
 success *and* error), `connect-timeout-ms` enforcement, and the HTTP-status mapping for
@@ -229,6 +229,7 @@ rspec          # specs (controller, routing, auth, error mapping, deadline)
 rubocop        # Shopify ruleset
 rake rbs       # regenerate + validate sig/generated from inline annotations
 rake steep     # regenerate, then type check lib with Steep
+rake conformance  # the Connect conformance suite (needs Go and buf on PATH)
 ```
 
 ### The example service

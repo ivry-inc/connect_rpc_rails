@@ -7,7 +7,7 @@ protocol, unary, no TLS/streaming — see `config.yaml`).
 ## Current result
 
 ```
-86 passed, 0 failed
+84 passed, 0 failed
 ```
 
 Every in-scope case passes, including error details, response headers/trailers,
@@ -21,26 +21,24 @@ variant.
 ## Prerequisites (one-time)
 
 The server-under-test runs from the bundle (Puma is a development dependency), so
-`bundle install` once. The runner itself needs Go on PATH — install it and buf, and
-generate the conformance protos:
-
-```sh
-go install connectrpc.com/conformance/cmd/connectconformance@latest
-go install github.com/bufbuild/buf/cmd/buf@latest
-export PATH="$PATH:$(go env GOPATH)/bin"
-
-cd conformance
-buf generate buf.build/connectrpc/conformance   # writes gen/ (git-ignored)
-```
+`bundle install` once. Beyond that the suite needs `go` and `buf` on PATH; the rake
+task installs the runner itself into `tmp/bin` and generates the protos into `gen/`
+(both git-ignored).
 
 ## Run
 
 ```sh
-export PATH="$PATH:$(go env GOPATH)/bin"
-connectconformance --mode server --conf conformance/config.yaml -- bundle exec ruby conformance/server.rb
+bundle exec rake conformance
 ```
 
-Exit 0 means every in-scope case passed. Add `--trace` to inspect any exchange.
+Exit 0 means every in-scope case passed. The runner and the protos are both pinned to
+`CONFORMANCE_VERSION` in `rakelib/conformance.rake`. To inspect an exchange, point the
+task at a runner invoked by hand:
+
+```sh
+tmp/bin/connectconformance --trace --mode server --conf conformance/config.yaml \
+  -- bundle exec ruby conformance/server.rb
+```
 
 ## Files
 
