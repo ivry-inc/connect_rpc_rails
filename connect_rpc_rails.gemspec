@@ -6,13 +6,24 @@ Gem::Specification.new do |spec|
   spec.name = "connect_rpc_rails"
   spec.version = ConnectRpcRails::VERSION
   spec.authors = ["IVRy Inc."]
+  spec.email = ["arch@ivry.jp"]
   spec.summary = "Minimal Connect RPC (unary) server for Rails, built on ActionController::API."
+  spec.description = "Serves Connect unary RPCs as ordinary Rails controller actions, so every " \
+    "call flows through the normal ActionController::API lifecycle and the Rails observability " \
+    "stack works with no extra wiring."
+  spec.homepage = "https://github.com/ivry-inc/connect_rpc_rails"
   spec.license = "Apache-2.0"
   spec.required_ruby_version = ">= 3.4"
 
-  spec.metadata = {"allowed_push_host" => "https://example.invalid"}
+  spec.metadata = {
+    "allowed_push_host" => "https://rubygems.org",
+    "homepage_uri" => spec.homepage,
+    "source_code_uri" => spec.homepage,
+    "changelog_uri" => "#{spec.homepage}/blob/main/CHANGELOG.md",
+    "rubygems_mfa_required" => "true",
+  }
 
-  spec.files = Dir["lib/**/*.rb", "README.md"]
+  spec.files = Dir["lib/**/*.rb", "sig/**/*.rbs", "README.md", "LICENSE", "CHANGELOG.md"]
   spec.require_paths = ["lib"]
 
   spec.add_dependency "actionpack", ">= 7.0"
