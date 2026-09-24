@@ -181,7 +181,7 @@ any other.
 ## Conformance
 
 The official [connectrpc/conformance](https://github.com/connectrpc/conformance) suite
-lives in [`conformance/`](conformance/) and passes **86/86** (Connect + unary) against
+lives in [`conformance/`](conformance/) and passes **84/84** (Connect + unary) against
 the `ActionController::API` transport, with the server-under-test mounted through an
 `ActionDispatch` `RouteSet` — including error details, response headers/trailers (on
 success *and* error), `connect-timeout-ms` enforcement, and the HTTP-status mapping for
@@ -225,11 +225,14 @@ Ruby is pinned in `.mise.toml`, so [mise](https://mise.jdx.dev) users get the ri
 interpreter automatically; otherwise use Ruby 3.4.
 
 ```sh
-rspec          # specs (controller, routing, auth, error mapping, deadline)
-rubocop        # Shopify ruleset
-rake rbs       # regenerate + validate sig/generated from inline annotations
-rake steep     # regenerate, then type check lib with Steep
+rspec             # specs (controller, routing, auth, error mapping, deadline)
+hk check --all    # rubocop, steep, actionlint, zizmor (tools pinned in .mise.toml)
+rake rbs          # regenerate + validate sig/generated from inline annotations
+rake steep        # regenerate, then type check lib with Steep
+rake conformance  # the Connect conformance suite (needs Go and buf on PATH)
 ```
+
+`hk install` wires the same checks into a pre-commit hook. CI runs exactly these.
 
 ### The example service
 
@@ -268,6 +271,17 @@ signatures lag the versions this gem builds against, and much of that surface is
 `ConnectRpcRails::Controller` is a mix-in, so `sig/manual/controller_self.rbs` declares
 what it is mixed into (`ActionController::API`) plus the class-level accessors
 `extend ClassMethods` installs — a shape RBS cannot infer from the module body.
+
+## Releasing
+
+Tags drive the release. `.github/workflows/release.yml` fires on `v*`, reruns the full
+test workflow as a gate, then creates a draft GitHub release and publishes the gem to
+RubyGems through OIDC trusted publishing — there is no API key stored anywhere.
+
+1. Bump `ConnectRpcRails::VERSION` and retitle the `## Unreleased` heading in
+   `CHANGELOG.md` to `## <version> (<YYYY-MM-DD>)`. Merge that as its own PR.
+2. `git tag v<version> && git push origin v<version>`.
+3. Once the workflow finishes, review the draft release and publish it.
 
 ## Deliberately out of scope
 

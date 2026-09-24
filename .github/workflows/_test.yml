@@ -1,20 +1,40 @@
-# Runs the same checks as `rake` and `rubocop` locally. No secrets required.
-name: PR Checks
+# The checks `rake`, `hk check` and `rake conformance` run locally. No secrets required.
+name: Test
 
 on:
-  pull_request:
-  push:
-    branches: [main]
+  workflow_call:
 
-permissions: {}
-
-concurrency:
-  group: pr-checks-${{ github.head_ref || github.ref }}
-  cancel-in-progress: true
+permissions:
+  contents: read
 
 jobs:
+  rspec:
+    name: "rspec (Ruby ${{ matrix.ruby }})"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    # The gemspec supports >= 3.4, so both ends of that range are exercised.
+    strategy:
+      fail-fast: false
+      matrix:
+        ruby: ["3.4", "4.0"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ruby/setup-ruby@95ef2b042f9d7a56d8268cba8559e2842e2ad01b # v1.321.0
+        with:
+          ruby-version: ${{ matrix.ruby }}
+          bundler-cache: true
+
+      - name: rspec
+        run: bundle exec rspec --format documentation
+
   steep:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: read
     steps:
@@ -33,6 +53,7 @@ jobs:
         with:
           path: .gem_rbs_collection
           key: rbs-collection-${{ hashFiles('rbs_collection.lock.yaml') }}
+          restore-keys: rbs-collection-
 
       # --frozen installs strictly from the lock file instead of regenerating it, so
       # CI checks against the signature versions that were reviewed.
@@ -53,30 +74,9 @@ jobs:
       - name: steep check
         run: bundle exec steep check
 
-  rspec:
+  conformance:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    # The gemspec supports >= 3.4, so both ends of that range are exercised.
-    strategy:
-      fail-fast: false
-      matrix:
-        ruby-version: ["3.4", "4.0"]
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - uses: ruby/setup-ruby@95ef2b042f9d7a56d8268cba8559e2842e2ad01b # v1.321.0
-        with:
-          ruby-version: ${{ matrix.ruby-version }}
-          bundler-cache: true
-
-      - name: rspec
-        run: bundle exec rspec --format documentation
-
-  rubocop:
-    runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: read
     steps:
@@ -89,5 +89,44 @@ jobs:
           ruby-version: "4.0"
           bundler-cache: true
 
-      - name: rubocop
-        run: bundle exec rubocop --format progress --format github --color
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: stable
+          cache: false
+
+      - uses: bufbuild/buf-action@8c6a16e16f12ba20b6470afa9c2ba9b5ba8c97c3 # v1.5.0
+        with:
+          setup_only: true
+
+      # The runner is pinned in the rake task, so the key moves when the pin does.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: tmp/bin
+          key: connectconformance-${{ hashFiles('rakelib/conformance.rake') }}
+
+      - name: rake conformance
+        run: bundle exec rake conformance
+
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    env:
+      # Ruby comes from setup-ruby, which also caches the bundle.
+      MISE_DISABLE_TOOLS: ruby
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ruby/setup-ruby@95ef2b042f9d7a56d8268cba8559e2842e2ad01b # v1.321.0
+        with:
+          ruby-version: "4.0"
+          bundler-cache: true
+
+      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+
+      # steep runs in its own job, which prepares the rbs collection it needs.
+      - name: hk check
+        run: hk check --all --skip-step steep
