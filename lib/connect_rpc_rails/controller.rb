@@ -234,7 +234,9 @@ module ConnectRpcRails
       codec = Codec.for_content_type(request.content_type)
       return {} unless request.post? && rpc && codec
 
-      @connect_request = codec.decode(rpc.input_class, request.body.read)
+      # Rack 3.1 lets a server omit rack.input for an empty body (Falcon does), and an
+      # empty message encodes to an empty proto body.
+      @connect_request = codec.decode(rpc.input_class, request.body&.read || "")
       @connect_request.to_h
     rescue Google::Protobuf::ParseError => e
       # Defer a malformed body to the action, so it flows through instrumentation and

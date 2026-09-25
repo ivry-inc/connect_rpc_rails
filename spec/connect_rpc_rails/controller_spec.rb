@@ -73,6 +73,17 @@ RSpec.describe ConnectRpcRails::Controller do
     expect(JSON.parse(resp)["code"]).to eq("invalid_argument")
   end
 
+  it "decodes an empty message when the server omits rack.input for an empty body" do
+    env = Rack::MockRequest.env_for("/#{GreetHelpers::SERVICE_NAME}/SayHello", method: "POST", "CONTENT_TYPE" => "application/proto")
+    env.delete("rack.input")
+    env["HTTP_AUTHORIZATION"] = "Bearer valid-token"
+
+    status, _headers, proxy = GreetRpcController.action("say_hello").call(env)
+
+    expect(status).to eq(400)
+    expect(JSON.parse(proxy.body)["message"]).to eq("name is required")
+  end
+
   it "rejects a malformed connect-timeout-ms as invalid_argument, not an expired deadline" do
     body = Greet::V1::SayHelloRequest.encode_json(say_hello_request)
 
