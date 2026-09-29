@@ -29,6 +29,10 @@ Gem::Specification.new do |spec|
   spec.add_dependency "actionpack", ">= 7.0"
   spec.add_dependency "google-protobuf", "~> 4.26"
 
+  # The gems the optional protovalidate integration binds to, and the google.rpc messages it
+  # answers with. None is a dependency: the integration is reached only through a `require`.
+  spec.add_development_dependency "googleapis-common-protos-types", "~> 1.21"
+  spec.add_development_dependency "protovalidate", ">= 0.1.0.beta3"
   spec.add_development_dependency "puma", "~> 8.0"
   spec.add_development_dependency "rake", "~> 13.0"
   spec.add_development_dependency "rbs", "~> 4.0"

@@ -178,6 +178,64 @@ Because escaping is now answered correctly, an app needs no blanket
 request-error logging — and the error reporters subscribed to it — see it the way they see
 any other.
 
+## Validating requests with protovalidate
+
+A request message whose `.proto` carries [`buf.validate`](https://buf.build/docs/protovalidate/)
+rules can be checked before the RPC runs. `ConnectRpcRails::MessageValidatable` is an optional
+`require`; [protovalidate](https://github.com/sorah/protovalidate-rb) is not a dependency of
+this gem.
+
+```ruby
+require "connect_rpc_rails/protovalidate"
+
+class GreetController < ActionController::API
+  include ConnectRpcRails::Controller
+  include ConnectRpcRails::MessageValidatable
+  include BearerAuthentication
+
+  connect_service "greet.v1.GreetService"
+
+  def say_hello = ...
+end
+```
+
+A violation is answered the way [AIP-193](https://google.aip.dev/193) describes:
+`invalid_argument`, with a `google.rpc.BadRequest` carrying one `FieldViolation` per violated
+rule.
+
+```json
+{"code": "invalid_argument", "message": "preferredLanguage: must be at least 2 characters",
+ "details": [{"type": "google.rpc.BadRequest", "value": "..."}]}
+```
+
+- **Fields are named in the caller's encoding.** `preferredLanguage` for a JSON body,
+  `preferred_language` for a binary one, each segment resolved against the descriptor, so a
+  client can find the field it names: `parts[1].partName`, `labels["primary"].partName`.
+- **The reason is an AIP-193 constant.** The rule id upper-snake-cased (`string.min_len`
+  becomes `STRING_MIN_LEN`), or `INVALID_VALUE` for an id that cannot be one.
+- **It runs after authentication.** The check is a `before_action`, and defining an RPC moves
+  it behind the callbacks declared above, so an unauthenticated caller is answered
+  `unauthenticated` before its body is judged. Otherwise an invalid body would be answered
+  first, and the endpoint would tell anyone what a valid body looks like.
+- **Answering differently** is overriding `connect_error_for_violation`. A violation raises
+  `ConnectRpcRails::MessageValidatable::ViolationError`, carrying the violations and the request
+  message, and the concern's `rescue_from` renders whatever `ConnectRpcRails::Error` that method
+  builds from it. That error is raised with the violation as its `cause`, so a reporter walking
+  the chain reaches the validation.
+
+  ```ruby
+  private def connect_error_for_violation(error)
+    ConnectRpcRails::Error.new(:failed_precondition, error.message)
+  end
+  ```
+- **Opting out** is `skip_before_action :validate_connect_message!` at the top of the
+  controller.
+
+`google.rpc.BadRequest` is looked up in the descriptor pool rather than required, because
+googleapis belongs to the application: generate `google/rpc/error_details.proto` alongside
+your own protos, or bundle `googleapis-common-protos-types`. Register your messages' rules at
+boot so no request pays their compilation, as the protovalidate README describes.
+
 ## Conformance
 
 The official [connectrpc/conformance](https://github.com/connectrpc/conformance) suite
@@ -209,6 +267,7 @@ lib/connect_rpc_rails/
   codec.rb                # JSON / proto, via google-protobuf
   errors.rb               # Connect codes -> HTTP status, wire error body
   exceptions_app.rb       # config.exceptions_app wrapper: Connect error shape for what escapes
+  message_validatable.rb  # optional: buf.validate rules on requests (require "connect_rpc_rails/protovalidate")
 examples/greet/           # the example as a real, bootable Rails app (own Gemfile + config.ru)
   app/controllers/greet_controller.rb    # connect_service + the RPC action
   app/controllers/concerns/bearer_authentication.rb  # authN as a before_action + stub verifier
