@@ -6,3 +6,10 @@ sources:
     repo_dir: gems
 
 path: .gem_rbs_collection
+
+gems:
+  # Its signatures are written against google-protobuf 4.x, whose generic RepeatedField the
+  # collection's google-protobuf entry lacks. Its one call site is steep:ignore'd instead,
+  # because a stub under sig/ would ship and collide with the real signatures in an app.
+  - name: protovalidate
+    ignore: true

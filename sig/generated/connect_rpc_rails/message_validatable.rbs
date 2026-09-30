@@ -1,0 +1,96 @@
+# Generated from lib/connect_rpc_rails/message_validatable.rb with RBS::Inline
+
+module ConnectRpcRails
+  # Checks a Connect request against the `buf.validate` rules of its message before the RPC
+  # runs, and answers a violation the way AIP-193 describes: `invalid_argument`, with a
+  # `google.rpc.BadRequest` naming each field.
+  #
+  #   class GreetController < ActionController::API
+  #     include ConnectRpcRails::Controller
+  #     include ConnectRpcRails::MessageValidatable
+  #     include BearerAuthentication
+  #     connect_service "greet.v1.GreetService"
+  #
+  #     def say_hello = ...
+  #   end
+  #
+  # Fields are named in the caller's encoding: `preferredLanguage` for a JSON body,
+  # `preferred_language` for a binary one. `google.rpc.BadRequest` is looked up in the
+  # descriptor pool rather than required, because googleapis belongs to the application: it
+  # generates `google/rpc/error_details.proto` alongside its own protos, or bundles
+  # googleapis-common-protos-types.
+  #
+  # A violation raises ViolationError, which the concern rescues into the Connect error
+  # #connect_error_for_violation builds. Override that method to answer differently. Opt a
+  # controller out with `skip_before_action :validate_connect_message!` at its top.
+  # @rbs module-self ActionController::API
+  # @rbs module-self Controller
+  module MessageValidatable : ActionController::API, Controller
+    extend ActiveSupport::Concern
+
+    # Raised when `google.rpc.BadRequest` is not in the descriptor pool.
+    class MissingDescriptorError < StandardError
+    end
+
+    # Raised when a request breaks a rule its message declares.
+    class ViolationError < StandardError
+      # @return [Array<Protovalidate::Violation>]
+      attr_reader violations: Array[untyped]
+
+      # @return [Object] the request message the violations were found in
+      attr_reader request_message: untyped
+
+      # : (Array[untyped] violations, untyped request_message) -> void
+      def initialize: (Array[untyped] violations, untyped request_message) -> void
+    end
+
+    BAD_REQUEST: String
+
+    # AIP-193: a FieldViolation's reason is UPPER_SNAKE_CASE and at most 63 characters.
+    REASON_PATTERN: Regexp
+
+    # Published for a rule id that cannot be a reason, such as a CEL rule named in lowercase.
+    FALLBACK_REASON: String
+
+    # Rails appends a re-registered callback to the end of the chain, so defining an RPC
+    # moves the validation behind the authentication a controller declares above it. An
+    # invalid body answered before an unauthenticated one would tell a caller what a valid
+    # body looks like. No entry means the controller skipped it, and it stays skipped.
+    def method_added: (untyped method_name) -> untyped
+
+    # The violated field as `parts[0].part_name`, each segment resolved against the descriptor
+    # so it is spelled the way the caller's encoding spells it. Empty for a message-level rule.
+    # : (untyped path, untyped message_class, json_names: bool) -> String
+    def self.field_path: (untyped path, untyped message_class, json_names: bool) -> String
+
+    # The message a path continues into after this field: for a map, the value's type rather
+    # than the synthetic entry, because the key is the subscript and not a segment.
+    # : (untyped field) -> untyped
+    def self.field_message: (untyped field) -> untyped
+
+    # : (untyped element) -> String
+    def self.subscript: (untyped element) -> String
+
+    # The rule id as a reason constant: `string.min_len` becomes `STRING_MIN_LEN`.
+    # : (String rule_id) -> String
+    def self.reason: (String rule_id) -> String
+
+    # A googleapis message class, looked up in the descriptor pool.
+    # : (String name) -> untyped
+    def self.googleapis_class: (String name) -> untyped
+
+    # : () -> void
+    private def validate_connect_message!: () -> void
+
+    # The Connect error a violation is answered with: `invalid_argument` with a
+    # `google.rpc.BadRequest`, naming each field the way this request's encoding spells it.
+    # Override to answer differently.
+    # : (ViolationError error) -> Error
+    private def connect_error_for_violation: (ViolationError error) -> Error
+
+    # Raised rather than only built, so the Connect error carries the violation as its cause for
+    # whatever reports it.
+    # : (ViolationError error) -> void
+    private def render_connect_violation: (ViolationError error) -> void
+  end
+end
