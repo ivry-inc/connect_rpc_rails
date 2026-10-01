@@ -85,7 +85,7 @@ module ConnectRpcRails
       # Registered first, so both the Error handler and anything `map_connect_errors` adds
       # later take precedence: Rails picks the most recently registered matching handler.
       install_rescue_response_defaults(base)
-      base.rescue_from(Error, with: :render_connect_error)
+      base.rescue_from(Error, with: :render_connect_exception)
       base.around_action(:enforce_connect_deadline)
       base.prepend_before_action(:validate_connect_request)
     end
@@ -102,7 +102,7 @@ module ConnectRpcRails
       ActionDispatch::ExceptionWrapper.rescue_responses.each_key do |class_name|
         next if RESCUE_RESPONSE_EXCLUSIONS.include?(class_name)
 
-        base.rescue_from(class_name, with: :render_rescue_response_error)
+        base.rescue_from(class_name, with: :render_connect_exception)
       end
     end
 
@@ -140,7 +140,7 @@ module ConnectRpcRails
       #: (Hash[Class, Symbol]) -> void
       def map_connect_errors(mapping)
         self.connect_error_mapping = connect_error_mapping.merge(mapping)
-        mapping.each_key { |klass| rescue_from(klass, with: :render_mapped_connect_error) }
+        mapping.each_key { |klass| rescue_from(klass, with: :render_connect_exception) }
       end
     end
 
@@ -355,32 +355,37 @@ module ConnectRpcRails
       end
     end
 
-    # The handler `map_connect_errors` installs: the mapping lives on the class, so the
-    # code for the exception at hand is looked up rather than baked into a closure.
-    private def render_mapped_connect_error(exception)
-      _, code = self.class.connect_error_mapping.find { |klass, _| exception.is_a?(klass) }
-      # Only classes in the mapping are rescued, so this can't miss; re-raise rather than
-      # invent a code if it somehow does.
-      raise exception unless code
-
-      render_connect_error(Error.new(code, exception.message))
+    # The handler every `rescue_from` the library installs points at.
+    private def render_connect_exception(exception)
+      render_connect_error(connect_error_for(exception))
     end
 
-    # The handler installed for every `rescue_responses` entry. The status is read off the
-    # nearest ancestor the registry names, since `rescue_from` matches subclasses too and a
-    # subclass isn't a key (an `ActiveRecord::RecordNotUnique` is classified as the
-    # `StatementInvalid` it descends from). Read with `fetch`, because the registry answers
-    # anything at all with a default of :internal_server_error — which would stop the walk
-    # on the first ancestor and call every subclass a 500.
-    private def render_rescue_response_error(exception)
-      responses = ActionDispatch::ExceptionWrapper.rescue_responses
-      status = exception.class.ancestors.lazy.filter_map { |klass| responses.fetch(klass.name, nil) }.first
-      # Only registered names are rescued here, so this can't miss; re-raise rather than
-      # invent a code if it somehow does.
-      raise exception unless status
+    # The Connect error to send for a rescued exception. Override to add details every
+    # error should carry, the way ExceptionsApp#connect_error_for is overridden for errors
+    # that escape the controller.
+    #
+    # A mapped exception takes its code from `map_connect_errors`, which overrides the
+    # `rescue_responses` classification. That status is read off the nearest ancestor the
+    # registry names, since `rescue_from` matches subclasses too and a subclass isn't a key
+    # (an `ActiveRecord::RecordNotUnique` is classified as the `StatementInvalid` it
+    # descends from). Read with `fetch`, because the registry answers anything at all with
+    # a default of :internal_server_error — which would stop the walk on the first ancestor
+    # and call every subclass a 500.
+    #: (Exception) -> Error
+    private def connect_error_for(exception)
+      return exception if exception.is_a?(Error)
 
-      code = Error.code_for_http_status(Rack::Utils.status_code(status))
-      render_connect_error(Error.new(code, exception.message))
+      _, code = self.class.connect_error_mapping.find { |klass, _| exception.is_a?(klass) }
+      unless code
+        responses = ActionDispatch::ExceptionWrapper.rescue_responses
+        status = exception.class.ancestors.lazy.filter_map { |klass| responses.fetch(klass.name, nil) }.first
+        code = Error.code_for_http_status(Rack::Utils.status_code(status)) if status
+      end
+      # Only mapped or classified exceptions are rescued, so this can't miss; re-raise
+      # rather than invent a code if it somehow does.
+      raise exception unless code
+
+      Error.new(code, exception.message)
     end
 
     private def render_connect_error(error)
