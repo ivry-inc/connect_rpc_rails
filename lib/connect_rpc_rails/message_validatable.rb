@@ -202,7 +202,7 @@ module ConnectRpcRails
     private def render_connect_violation(error)
       raise connect_error_for_violation(error), cause: error
     rescue Error => connect_error
-      render_connect_error(connect_error)
+      render_connect_exception(connect_error)
     end
   end
 end

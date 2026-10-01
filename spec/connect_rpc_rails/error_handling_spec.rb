@@ -105,6 +105,15 @@ class OverridingController < ActionController::API
   end
 end
 
+# Puts the class of the exception it was handed into the message, so a spec can see which
+# exception reached the override.
+class ExceptionEchoController < MappedErrorController
+  private def connect_error_for(exception)
+    error = super
+    ConnectRpcRails::Error.new(error.code, "#{error.message} (#{exception.class})")
+  end
+end
+
 RSpec.describe "error handling" do
   def json_body(**overrides)
     Greet::V1::SayHelloRequest.encode_json(say_hello_request(**overrides))
@@ -115,6 +124,12 @@ RSpec.describe "error handling" do
 
     expect(status).to eq(503)
     expect(JSON.parse(resp)["code"]).to eq("unavailable")
+  end
+
+  it "hands an overridden connect_error_for the exception the RPC raised" do
+    _status, _headers, resp = call_connect(ExceptionEchoController, "SayHello", json_body, content_type: "application/json")
+
+    expect(JSON.parse(resp)).to include("code" => "unavailable", "message" => "upstream timed out (DemoTimeout)")
   end
 
   it "propagates an unmapped exception to the host middleware" do

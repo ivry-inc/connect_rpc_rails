@@ -206,17 +206,22 @@ module ConnectRpcRails
     # : () { (?) -> untyped } -> untyped
     private def enforce_connect_deadline: () { (?) -> untyped } -> untyped
 
-    # The handler `map_connect_errors` installs: the mapping lives on the class, so the
-    # code for the exception at hand is looked up rather than baked into a closure.
-    private def render_mapped_connect_error: (untyped exception) -> untyped
+    # The handler every `rescue_from` the library installs points at.
+    private def render_connect_exception: (untyped exception) -> untyped
 
-    # The handler installed for every `rescue_responses` entry. The status is read off the
-    # nearest ancestor the registry names, since `rescue_from` matches subclasses too and a
-    # subclass isn't a key (an `ActiveRecord::RecordNotUnique` is classified as the
-    # `StatementInvalid` it descends from). Read with `fetch`, because the registry answers
-    # anything at all with a default of :internal_server_error — which would stop the walk
-    # on the first ancestor and call every subclass a 500.
-    private def render_rescue_response_error: (untyped exception) -> untyped
+    # The Connect error to send for a rescued exception. Override to add details every
+    # error should carry, the way ExceptionsApp#connect_error_for is overridden for errors
+    # that escape the controller.
+    #
+    # A mapped exception takes its code from `map_connect_errors`, which overrides the
+    # `rescue_responses` classification. That status is read off the nearest ancestor the
+    # registry names, since `rescue_from` matches subclasses too and a subclass isn't a key
+    # (an `ActiveRecord::RecordNotUnique` is classified as the `StatementInvalid` it
+    # descends from). Read with `fetch`, because the registry answers anything at all with
+    # a default of :internal_server_error — which would stop the walk on the first ancestor
+    # and call every subclass a 500.
+    # : (Exception) -> Error
+    private def connect_error_for: (Exception) -> Error
 
     private def render_connect_error: (untyped error) -> untyped
 

@@ -157,6 +157,19 @@ because a hand-written `rescue_from` can't simply `raise` a `ConnectRpcRails::Er
 Rails calls one handler per exception, so the raise would escape instead of reaching the
 handler that renders the wire error.
 
+**One method builds every error a controller sends.** Each handler the library installs
+passes the rescued exception to the controller's private `#connect_error_for`, which
+returns the `ConnectRpcRails::Error` to render. Override it to attach details every error
+should carry — a `google.rpc.RequestInfo`, or a `google.rpc.DebugInfo` built from the
+original exception — and call `super` for the code and message:
+
+```ruby
+private def connect_error_for(exception)
+  error = super
+  ConnectRpcRails::Error.new(error.code, error.message, details: error.details + [request_info_detail])
+end
+```
+
 **Everything that escapes is the exceptions app's job.** An exception raised before
 dispatch — a routing error, an unreadable body, a middleware failing — never reaches a
 controller, and the host's `config.exceptions_app` would answer it in a shape a Connect
