@@ -1,362 +1,132 @@
-# connect_rpc_rails
+# connect_rpc_rails: Connect unary RPCs as ordinary Rails controller actions
 
-A minimal [Connect](https://connectrpc.com/docs/protocol/) **unary** RPC server for
-Rails, built on `ActionController::API`. It gives you a Connect-for-Ruby layer that is
-small enough to own outright: a service is an ordinary Rails controller, so it reuses
-`google-protobuf` and the observability you already have rather than shipping a parallel
-stack.
+connect_rpc_rails serves [Connect](https://connectrpc.com/docs/protocol/) unary RPCs from a Rails app. A service is an `ActionController::API` controller and each RPC is one of its actions, so callbacks, `rescue_from`, and the `process_action.action_controller` instrumentation that Datadog, Sentry, lograge, and the Rails request log hook into all apply with no extra wiring.
 
-## How it works
+Services are read off the `google-protobuf` descriptor pool, so the only generated code is the message classes `buf`/`protoc` already emit. The library is small enough to own outright: it is a Connect transport for Rails, not a parallel framework.
 
-A Connect service is an `ActionController::API` controller: each RPC in the descriptor
-is **one Rails action on that controller**, so every call flows through the normal
-controller lifecycle. Because `process_action.action_controller` fires, the entire
-Rails observability ecosystem (Datadog resource naming, Sentry transactions, lograge,
-the `Completed 200 in Xms` request log) works with no extra wiring. The RPC method
-holds the domain logic; the library wraps it with the transport.
+## Features
+
+- One RPC is one controller action, routed per service from the `.proto` descriptor
+- Cross-cutting logic is Rails callbacks (`before_action`, `around_action`, `rescue_from`), with no interceptor layer to learn
+- Exceptions Rails already classifies become Connect codes without mapping: `ActiveRecord::RecordNotFound` is `not_found`
+- Connect-shaped errors even for exceptions that escape before dispatch, through `ConnectRpcRails::ExceptionsApp`
+- `connect-timeout-ms` deadlines, request metadata, and response trailers
+- Optional request validation against [`buf.validate`](https://buf.build/docs/protovalidate/) rules through [protovalidate](https://github.com/sorah/protovalidate-rb)
+- Passes every in-scope case of the official [Connect conformance suite](conformance/)
+- RBS signatures included
+
+## Requirements
+
+- Ruby 3.4 or later
+- Rails (Action Pack) 7.0 or later
+- google-protobuf 4.26 or later, below 5
+
+## Installation
 
 ```
-caller ──HTTP──▶ Rails router ──▶ GreetController#say_hello
-                                  (ConnectRpcRails::Controller: decode ▸ callbacks ▸ encode)
+bundle add connect_rpc_rails
 ```
+
+## Usage
+
+Given a service contract:
+
+```protobuf
+// proto/greet/v1/greet.proto
+syntax = "proto3";
+package greet.v1;
+
+service GreetService {
+  rpc SayHello(SayHelloRequest) returns (SayHelloResponse);
+}
+
+message SayHelloRequest {
+  string name = 1;
+}
+
+message SayHelloResponse {
+  string greeting = 1;
+}
+```
+
+### 1. Load the generated messages
+
+Generate Ruby code with `buf generate` or `protoc --ruby_out`, and require it before the routes are drawn. `connect_service` looks the service up in the descriptor pool by name.
+
+```ruby
+# config/application.rb
+require_relative "../lib/greet/v1/greet_pb"
+```
+
+### 2. Implement the service as a controller
 
 ```ruby
 # app/controllers/greet_controller.rb
 class GreetController < ActionController::API
   include ConnectRpcRails::Controller
-  include BearerAuthentication          # a concern with a before_action
 
-  connect_service "greet.v1.GreetService"   # the name the .proto gives it
+  connect_service "greet.v1.GreetService"
 
-  # An ordinary action — no arguments, like any other Rails action. The library decodes
-  # the request message (`connect_request`, read the way you read `params`) and encodes
-  # whatever message you return. `principal` was set by the before_action; authZ lives
-  # here.
   def say_hello
     Greet::V1::SayHelloResponse.new(greeting: "Hello, #{connect_request.name}!")
   end
 end
 ```
 
+An RPC takes no arguments, like any other action. `connect_request` is the decoded request message, and the returned message is encoded in the caller's format (`application/json` or `application/proto`).
+
+### 3. Route it
+
 ```ruby
-# config/routes.rb — 1 RPC = 1 route.
+# config/routes.rb
 Rails.application.routes.draw do
   connect_service "greet.v1.GreetService" => :greet
 end
 ```
 
-**The RPC runs on a per-request instance.** That is the reason there is no handler
-object to register: an object held on the controller class would be shared by every
-request in the process, so anything one call left in an instance variable would be
-readable by the next caller — the mismatch that bites when gRPC-style handlers (one
-long-lived instance) are mixed into Rails (one instance per request). Here the RPC
-method *is* an action, so Rails' per-request instance is the only lifecycle in play.
-Domain logic that shouldn't live in a controller belongs in an ordinary object the
-action calls, constructed inside the action like anywhere else in Rails.
+This draws `POST /greet.v1.GreetService/SayHello` to `GreetController#say_hello`, one route per RPC the descriptor declares.
 
-**A service can be one controller or a controller per RPC.** A whole service behind one
-class is the default. When its methods have little in common — different authorization,
-different validation — give each its own controller with a block, and each RPC's callbacks
-are its own rather than the service's with `only:`:
+### 4. Call it
 
-```ruby
-# config/routes.rb
-connect_service "greet.v1.GreetService" do
-  rpc "SayHello" => :greet_say_hello
-  rpc "SayGoodbye" => :greet_say_goodbye
-end
+```console
+$ curl -X POST -H 'Content-Type: application/json' \
+    -d '{"name":"Ada"}' \
+    http://localhost:3000/greet.v1.GreetService/SayHello
+{"greeting":"Hello, Ada!"}
 ```
 
-Every mapped name has to be one the descriptor declares, so a typo or a rename fails at boot
-instead of drawing a route nothing reaches. The mapping does not have to cover the service:
-an RPC left out is still routed — to the first mapped controller, which serves the service
-but not that method, so it is answered `unimplemented` exactly as a declared RPC nobody
-implements always is. The controllers declare the service once on a shared base class —
-`connect_service` is inherited — and the service-prefix catch-all is drawn at the first of
-them, since answering it is a 404 and nothing else.
+Raise `ConnectRpcRails::Error.new(:invalid_argument, "name is required")` to answer an error, and use `before_action` for authentication as in any controller. [`examples/greet`](examples/greet/) is a bootable app with a bearer-token concern and error handling; see [docs/development.md](docs/development.md#the-example-service) to run it.
 
-**Routes come from the descriptor, per service.** The routes file names the service the
-way the `.proto` does and points it at a controller as a string, exactly like any other
-Rails route — so drawing the routes doesn't load the controller class, and both ends of the
-mapping grep straight to the protobuf definition. Every method the descriptor declares
-becomes one route to the action implementing it; the method list lives in the `.proto` and
-nowhere else. What the controller actually serves is then its own business: a declared RPC
-with no action is answered Connect `unimplemented` (HTTP 501, not a 404, as the protocol
-wants) through Rails' own `action_missing`, and the single catch-all the DSL draws over the
-service prefix makes a method the descriptor never declared a plain 404.
+## Documentation
 
-Under eager loading — production, and CI — the DSL also resolves each routed controller as
-the routes are drawn and checks that it serves the service it was wired to, so a
-mis-wired route raises at boot instead of 404-ing in production. Rails eager loads before it
-draws the routes, so that costs no autoloading; with lazy loading (development) the class is
-left untouched.
+- [Writing services](docs/controllers.md): reading the request, metadata, trailers, deadlines, callbacks
+- [Routing](docs/routing.md): one controller per service or per RPC, and what unrouted calls are answered
+- [Error handling](docs/error-handling.md): Connect codes, Rails' exception classification, `map_connect_errors`, `ExceptionsApp`
+- [Validating requests with protovalidate](docs/protovalidate.md)
+- [Development](docs/development.md): running the specs, type checks, the conformance suite, and releasing
+- [Design](DESIGN.md): how the transport hooks into `ActionController::API`, and why
 
-**Why `ActionController::API`, not a bare Rack transport?** A bespoke Rack transport
-would mean going off the controller path and losing everything that hangs off
-`process_action.action_controller` (Datadog/Sentry/lograge/the request log), then
-rebuilding each integration by hand. `ActionController::API` ships exactly the useful
-modules (`Instrumentation`, `Logging`, `Rescue`, `AbstractController::Callbacks`,
-`StrongParameters`) and omits the browser concerns an RPC endpoint never uses (CSRF,
-cookies, flash, view rendering). It also brings the per-request instance lifecycle,
-which is what keeps request state from outliving the request.
+## Caveats
 
-## Reading the call, and cross-cutting logic
+- Only the Connect protocol's unary RPCs are served. Streaming, gRPC and gRPC-Web, request compression, and the idempotent GET variant are out of scope.
+- `connect-timeout-ms` is enforced with `Timeout.timeout`, which interrupts the action wherever it is running when the deadline passes.
+- The message of an exception mapped to a Connect code, including Rails-classified ones such as `ActiveRecord::RecordNotFound`, is sent to the caller as the error message.
 
-A Connect call *is* an HTTP request, so there is no per-call context object to learn:
-
-| what you want | where it is |
-|---|---|
-| the decoded request message | `connect_request` — read it the way you read `params` |
-| request metadata | `connect_metadata` (the request's headers, downcased and dasherized), or `request.headers` |
-| leading response metadata | `response.headers` |
-| trailing response metadata | `connect_trailers["x-audit"] = ["1"]` — the helper writes Connect's unary `trailer-` form |
-| the deadline | `connect_deadline` / `connect_timeout_ms`, for budgeting your own downstream calls |
-| anything you computed for this call | an instance variable, as in any controller |
-
-**Cross-cutting logic is Rails callbacks, and only that.** There is no interceptor layer:
-`before_action` for auth, `around_action` to wrap a call, `rescue_from` for exception
-mapping. The body is decoded *before* the callbacks run, so a `before_action` can already
-read `connect_request` — which is what makes callbacks a complete replacement rather than a
-partial one. Reuse across services is an `ActiveSupport::Concern` (see
-[`BearerAuthentication`](examples/greet/app/controllers/concerns/bearer_authentication.rb))
-or a shared base controller, and on top of that you get `only:` / `except:`, inheritance
-and `skip_before_action`, none of which an interceptor chain offers.
-
-Callbacks halt the Rails way: `render` a response, or raise a `ConnectRpcRails::Error` and
-let the library's `rescue_from` render the wire error.
-
-The library's own transport checks (POST-only, media type, undecodable body) run in a
-`prepend_before_action`, so a wrong-verb or unreadable request is answered as the protocol
-requires before any application callback — auth never sees a request that should be a 405.
-
-## Error handling
-
-`ConnectRpcRails::Error` maps to its Connect code + HTTP status. The controller declares
-`rescue_from ConnectRpcRails::Error` once, so it becomes the wire error body `{code,message,details}`
-in exactly one place. An exception that isn't a `ConnectRpcRails::Error` propagates to the
-host's error middleware, per the "let exceptions propagate" policy.
-
-**Exceptions Rails already classifies need no mapping.** Rails keeps that classification in
-`config.action_dispatch.rescue_responses` — the registry every railtie and gem writes into,
-where `ActiveRecord::RecordNotFound` is `:not_found` and `ActiveRecord::RecordInvalid` is
-`:unprocessable_content` — so including the module installs a Connect code for each of its
-entries, read off the nearest classified ancestor. A `RecordNotFound` out of an RPC is a
-Connect `not_found` without the app restating it.
-
-Mapping the *rest* — your own domain exceptions — is `map_connect_errors`, which applies to
-every RPC on the controller and overrides the code an entry above would have got:
-
-```ruby
-map_connect_errors MyDomain::Invalid => :invalid_argument,
-  MyDomain::QuotaReached => :resource_exhausted
-```
-
-That is `rescue_from` with the conversion filled in: each class gets its own handler, so
-nothing is blanket-rescued and anything unmapped still propagates. It exists as a macro
-because a hand-written `rescue_from` can't simply `raise` a `ConnectRpcRails::Error` —
-Rails calls one handler per exception, so the raise would escape instead of reaching the
-handler that renders the wire error.
-
-**One method builds every error a controller sends.** Each handler the library installs
-passes the rescued exception to the controller's private `#connect_error_for`, which
-returns the `ConnectRpcRails::Error` to render. Override it to attach details every error
-should carry — a `google.rpc.RequestInfo`, or a `google.rpc.DebugInfo` built from the
-original exception — and call `super` for the code and message:
-
-```ruby
-private def connect_error_for(exception)
-  error = super
-  ConnectRpcRails::Error.new(error.code, error.message, details: error.details + [request_info_detail])
-end
-```
-
-**Everything that escapes is the exceptions app's job.** An exception raised before
-dispatch — a routing error, an unreadable body, a middleware failing — never reaches a
-controller, and the host's `config.exceptions_app` would answer it in a shape a Connect
-client reads as a malformed response. `ConnectRpcRails::ExceptionsApp` wraps that app and
-answers the Connect protocol's error shape for a request carrying
-`connect-protocol-version`, passing everything else through untouched:
-
-```ruby
-config.exceptions_app = ConnectRpcRails::ExceptionsApp.new(MyExceptions.new(Rails.public_path))
-```
-
-The code comes from the status `rescue_responses` assigned the exception, so the app
-configures its classification in one place; the message is the status's own text, never
-the exception's. Override `#connect_error_for` in a subclass to stamp every error with a
-detail of your own (a `google.rpc.RequestInfo` holding the request id, say).
-
-Because escaping is now answered correctly, an app needs no blanket
-`rescue_from StandardError` to keep the protocol: let the exception propagate and Rails'
-request-error logging — and the error reporters subscribed to it — see it the way they see
-any other.
-
-## Validating requests with protovalidate
-
-A request message whose `.proto` carries [`buf.validate`](https://buf.build/docs/protovalidate/)
-rules can be checked before the RPC runs. `ConnectRpcRails::MessageValidatable` is an optional
-`require`; [protovalidate](https://github.com/sorah/protovalidate-rb) is not a dependency of
-this gem.
-
-```ruby
-require "connect_rpc_rails/protovalidate"
-
-class GreetController < ActionController::API
-  include ConnectRpcRails::Controller
-  include ConnectRpcRails::MessageValidatable
-  include BearerAuthentication
-
-  connect_service "greet.v1.GreetService"
-
-  def say_hello = ...
-end
-```
-
-A violation is answered the way [AIP-193](https://google.aip.dev/193) describes:
-`invalid_argument`, with a `google.rpc.BadRequest` carrying one `FieldViolation` per violated
-rule.
-
-```json
-{"code": "invalid_argument", "message": "preferredLanguage: must be at least 2 characters",
- "details": [{"type": "google.rpc.BadRequest", "value": "..."}]}
-```
-
-- **Fields are named in the caller's encoding.** `preferredLanguage` for a JSON body,
-  `preferred_language` for a binary one, each segment resolved against the descriptor, so a
-  client can find the field it names: `parts[1].partName`, `labels["primary"].partName`.
-- **The reason is an AIP-193 constant.** The rule id upper-snake-cased (`string.min_len`
-  becomes `STRING_MIN_LEN`), or `INVALID_VALUE` for an id that cannot be one.
-- **It runs after authentication.** The check is a `before_action`, and defining an RPC moves
-  it behind the callbacks declared above, so an unauthenticated caller is answered
-  `unauthenticated` before its body is judged. Otherwise an invalid body would be answered
-  first, and the endpoint would tell anyone what a valid body looks like.
-- **Answering differently** is overriding `connect_error_for_violation`. A violation raises
-  `ConnectRpcRails::MessageValidatable::ViolationError`, carrying the violations and the request
-  message, and the concern's `rescue_from` renders whatever `ConnectRpcRails::Error` that method
-  builds from it. That error is raised with the violation as its `cause`, so a reporter walking
-  the chain reaches the validation.
-
-  ```ruby
-  private def connect_error_for_violation(error)
-    ConnectRpcRails::Error.new(:failed_precondition, error.message)
-  end
-  ```
-- **Opting out** is `skip_before_action :validate_connect_message!` at the top of the
-  controller.
-
-`google.rpc.BadRequest` is looked up in the descriptor pool rather than required, because
-googleapis belongs to the application: generate `google/rpc/error_details.proto` alongside
-your own protos, or bundle `googleapis-common-protos-types`. Register your messages' rules at
-boot so no request pays their compilation, as the protovalidate README describes.
-
-## Conformance
-
-The official [connectrpc/conformance](https://github.com/connectrpc/conformance) suite
-lives in [`conformance/`](conformance/) and passes **84/84** (Connect + unary) against
-the `ActionController::API` transport, with the server-under-test mounted through an
-`ActionDispatch` `RouteSet` — including error details, response headers/trailers (on
-success *and* error), `connect-timeout-ms` enforcement, and the HTTP-status mapping for
-malformed requests (404 unknown method, 405 wrong verb, 415 unsupported media type,
-`unimplemented` for an unimplemented method and for unsupported compression). Streaming, gRPC/gRPC-Web, compression, and
-TLS remain out of scope. This is the real interop check that hand-written specs can't give.
-
-## Design highlights
-
-- **Reflection-based dispatch, no codegen.** A `protoc`/`buf`-generated service lands in the descriptor pool as a `ServiceDescriptor` whose `MethodDescriptor`s expose input/output message classes. `connect_service` takes the service's full name, looks it up in the pool, and derives the action names and message types purely off that — no per-service generated stubs. (`examples/greet/lib/greet_pb.rb` builds the descriptor in pure Ruby so the example runs with no protoc toolchain.)
-- **Rails instrumentation for free.** `process_action.action_controller` fires for every RPC (including errors), carrying `controller`/`action`/`status` plus a `connect_method` payload key (`pkg.Service/Method`) for clean trace/log resource naming.
-- **No object outlives the request.** The RPC is a controller action, so there is no handler singleton on the class to accumulate state between callers — the failure mode of putting gRPC-style handlers behind Rails.
-- **Nothing to learn beyond Rails.** An RPC is an action, cross-cutting logic is a callback, exception mapping is `rescue_from`, metadata is headers. The only Connect-specific thing in a controller is `connect_request`.
-- **authN vs authZ split.** `BearerAuthentication` (a concern standing in for a real bearer-token verifier) authenticates the `Bearer` token in a `before_action` and exposes `principal`; the RPC method authorizes against it.
-- **Connect wire compliance for unary:** `POST /pkg.Service/Method`, `application/json` + `application/proto`, error body `{code,message,details}` with the spec's code→HTTP-status table.
-
-## Layout
+## Development
 
 ```
-lib/connect_rpc_rails/
-  controller.rb           # the ActionController::API transport (mix-in)
-  routing.rb              # routes DSL: a route per declared RPC + the unknown-method catch-all
-  railtie.rb              # installs the routes DSL / Connect's content-type at Rails boot
-  service_registration.rb # descriptor -> RPC table (reflection)
-  codec.rb                # JSON / proto, via google-protobuf
-  errors.rb               # Connect codes -> HTTP status, wire error body
-  exceptions_app.rb       # config.exceptions_app wrapper: Connect error shape for what escapes
-  message_validatable.rb  # optional: buf.validate rules on requests (require "connect_rpc_rails/protovalidate")
-examples/greet/           # the example as a real, bootable Rails app (own Gemfile + config.ru)
-  app/controllers/greet_controller.rb    # connect_service + the RPC action
-  app/controllers/concerns/bearer_authentication.rb  # authN as a before_action + stub verifier
-  config/routes.rb                       # connect_service "greet.v1.GreetService" => :greet
-  config/application.rb                  # api_only Rails app boot (Action Controller + Active Record)
-  proto/greet/v1/greet.proto             # the service contract
-  lib/greet_pb.rb                        # hand-built stand-in for `buf generate` output
-spec/                     # RSpec: controller, routing, auth, error mapping, instance lifecycle
-```
-
-## Run
-
-Ruby is pinned in `.mise.toml`, so [mise](https://mise.jdx.dev) users get the right
-interpreter automatically; otherwise use Ruby 3.4.
-
-```sh
-rspec             # specs (controller, routing, auth, error mapping, deadline)
-hk check --all    # rubocop, steep, actionlint, zizmor (tools pinned in .mise.toml)
-rake rbs          # regenerate + validate sig/generated from inline annotations
-rake steep        # regenerate, then type check lib with Steep
-rake conformance  # the Connect conformance suite (needs Go and buf on PATH)
-```
-
-`hk install` wires the same checks into a pre-commit hook. CI runs exactly these.
-
-### The example service
-
-`examples/greet` is a bootable Rails app with its own bundle (the gem itself depends only
-on actionpack, so full Rails lives in the example's `Gemfile`, not the gem's):
-
-```sh
-cd examples/greet
 bundle install
-bundle exec puma -b tcp://127.0.0.1:9711 config.ru
-
-curl -X POST -H 'Content-Type: application/json' \
-  -H 'Authorization: Bearer valid-token' \
-  -d '{"name":"Ada","preferredLanguage":"ja"}' \
-  http://127.0.0.1:9711/greet.v1.GreetService/SayHello
-# => {"greeting":"こんにちは, Ada!"}
+bundle exec rspec
 ```
 
-Drop the token for `401 unauthenticated`, send `{}` for `400 invalid_argument`, use `GET`
-for `405`, and ask for a method the service doesn't declare for a `404`.
+See [docs/development.md](docs/development.md) for the full set of checks.
 
-## Types
+## Contributing
 
-The library carries [rbs-inline](https://github.com/soutaro/rbs-inline) annotations
-(`# rbs_inline: enabled`, `#:` method signatures). `rake rbs` transpiles them into
-`sig/generated/**/*.rbs` and runs `rbs validate`. Protobuf messages are typed
-`untyped` — in a typical project their `.rbs` comes from buf's `rbs` plugin.
+Bug reports and pull requests are welcome on GitHub at https://github.com/ivry-inc/connect_rpc_rails.
 
-`rake steep` goes further and checks `lib` against those signatures. Dependency
-signatures come from [gem_rbs_collection](https://github.com/ruby/gem_rbs_collection);
-run `rbs collection install` once to populate `.gem_rbs_collection` from
-`rbs_collection.lock.yaml`. Note the collection's `actionpack` and `google-protobuf`
-signatures lag the versions this gem builds against, and much of that surface is
-`untyped` there, so Steep checks this library's own logic rather than its use of Rails.
+## License
 
-`ConnectRpcRails::Controller` is a mix-in, so `sig/manual/controller_self.rbs` declares
-what it is mixed into (`ActionController::API`) plus the class-level accessors
-`extend ClassMethods` installs — a shape RBS cannot infer from the module body.
+This project is licensed under the Apache-2.0 License.
 
-## Releasing
-
-Tags drive the release. `.github/workflows/release.yml` fires on `v*`, reruns the full
-test workflow as a gate, then creates a draft GitHub release and publishes the gem to
-RubyGems through OIDC trusted publishing — there is no API key stored anywhere.
-
-1. Bump `ConnectRpcRails::VERSION` and retitle the `## Unreleased` heading in
-   `CHANGELOG.md` to `## <version> (<YYYY-MM-DD>)`. Merge that as its own PR.
-2. `git tag v<version> && git push origin v<version>`.
-3. Once the workflow finishes, review the draft release and publish it.
-
-## Deliberately out of scope
-
-Streaming (enveloped framing), gRPC / gRPC-Web compatibility, request compression,
-and the idempotent-GET variant. Unary over the Connect protocol is the whole surface
-here; add the rest only when a real consumer needs it.
+Copyright 2026 IVRy Inc.
