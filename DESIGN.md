@@ -43,11 +43,27 @@ Under eager loading, the DSL resolves each routed controller as the routes are d
 
 ## Request lifecycle
 
-- `process_action` decodes the body once, before callbacks and instrumentation. The typed message becomes `connect_request`, and its hash form populates `request_parameters`, so the request log and `config.filter_parameters` see the request without Rails parsing a JSON body a second time. The wire format is reported through the formats header rather than `request.format=`, which would inject a `:format` key into params.
-- A malformed body is deferred rather than raised during decode, so it flows through instrumentation and the normal error path and is logged like any other request.
-- Transport preconditions (POST only, supported media type, no request compression, decodable body) run in a `prepend_before_action`, ahead of every application callback. Authentication never sees a request that should be a 405.
+- `process_action` decodes the request message once, before callbacks and instrumentation: a POST's body, or a GET's `message` query parameter. The typed message becomes `connect_request`, and its hash form populates `request_parameters`, so `params`, the request log's `Parameters:` line and `config.filter_parameters` see the request without Rails parsing a JSON body a second time. A GET's URL still carries the message unfiltered (see below). The wire format, from the content type or a GET's `encoding`, is reported through the formats header rather than `request.format=`, which would inject a `:format` key into params.
+- A malformed message is deferred rather than raised during decode, so it flows through instrumentation and the normal error path and is logged like any other request.
+- Transport preconditions run in a `prepend_before_action`, ahead of every application callback: the verb (POST, or GET for a side-effect-free unary RPC), a supported codec, no request compression, a GET's `connect` parameter, and a decodable message. Authentication never sees a request that should be a 405.
 - `connect-timeout-ms` is enforced by an `around_action`, so the callbacks and the RPC together run under the deadline.
 - The action is invoked through `send_action`, Rails' documented seam for changing how action methods are called, and its return value is encoded in the request's codec.
+
+## GET for side-effect-free RPCs
+
+The protocol lets a client call a unary RPC with GET, carrying the request in the query string, when the `.proto` declares it `idempotency_level = NO_SIDE_EFFECTS`. `ServiceRegistration` reads that option off the method descriptor, so the `.proto` stays the only place it is declared. `IDEMPOTENT` does not open GET, and neither does `NO_SIDE_EFFECTS` on a streaming RPC, as in connect-go. A GET to any other RPC is a 405 whose `Allow` header names POST alone.
+
+A GET reaches the same action as a POST and differs only in where the transport reads the call from:
+
+- `encoding` picks the codec (`json` or `proto`, anything else is 415), and the response is encoded with it exactly as for POST.
+- `message` is the serialized request. With `base64=1` it is RFC 4648 §5 URL-safe base64, padded or not. The standard alphabet is refused, since the protocol names only the URL-safe one.
+- `compression` other than `identity` is answered `unimplemented`, naming the supported encodings in `accept-encoding` and in the message, as a POST's `content-encoding` is.
+- `connect=v1` is optional. The protocol lets a server reject a GET without it, but it also designs GET to be viewable in a browser tab, and its own first GET example omits the parameter. An empty value counts as absent, as connect-go reads it. Any other value names a protocol revision this server does not speak, and is `invalid_argument`.
+- A missing `message` is `invalid_argument`, as the protocol's grammar requires the parameter.
+
+The query is parsed by `GetQuery` rather than Rails, which refuses a query that is not valid UTF-8, as a percent-encoded binary message is. The Connect parameters are then removed from `query_parameters`, so `params` shows the decoded message once, filtered, alongside any unrelated query parameters. A query Rails refuses keeps none of them. A body sent with a GET is ignored.
+
+The URL still carries the message as sent, and Rails filters a query value by its key alone, so Rails' `Started GET` log line and the `path` of the `start_processing` and `process_action.action_controller` payloads show it unfiltered. The controller cannot change that: the `Started` line and `start_processing` come before the action runs, and rewriting only the finished payload's `path` would leave the two disagreeing. [Serving GET](docs/controllers.md#serving-get) documents the exposure instead, with an exact-key `filter_parameters` entry that masks `message`.
 
 ## Callbacks instead of interceptors
 
@@ -65,23 +81,23 @@ Rails keeps its exception taxonomy in `config.action_dispatch.rescue_responses`,
 
 Every `rescue_from` the library registers points at one handler, which renders `connect_error_for(exception)`. An app overrides that one method to attach details every error should carry, and still sees the exception that was rescued rather than the `ConnectRpcRails::Error` built from it. It mirrors `ExceptionsApp#connect_error_for`, the hook for errors that escape the controller.
 
-`ConnectRpcRails::ExceptionsApp` covers what escapes before dispatch. It recognizes Connect requests by `connect-protocol-version`, which the protocol requires on every unary call, and reads the status the way `ActionDispatch::PublicExceptions` does, so `rescue_responses` remains the one place an app classifies exceptions. It sends the status text rather than the exception message, which can quote internals.
+`ConnectRpcRails::ExceptionsApp` covers what escapes before dispatch. It recognizes a Connect request by `connect-protocol-version`, which Connect clients send on every unary POST, or by a GET carrying `connect=v1`, as they send on every GET. `ActionDispatch::ShowExceptions` rewrites every request to GET before calling it, so the original verb is read from `action_dispatch.original_request_method`. It reads the status the way `ActionDispatch::PublicExceptions` does, so `rescue_responses` remains the one place an app classifies exceptions. It sends the status text rather than the exception message, which can quote internals.
 
 ## Request validation
 
 `ConnectRpcRails::MessageValidatable` is loaded only by `require "connect_rpc_rails/protovalidate"`, so protovalidate stays out of the gem's dependencies.
 
-The validation is a `before_action` registered at include time, so `skip_before_action` has an entry to delete. Each RPC definition re-registers it through `method_added`, which moves it to the end of the chain, behind authentication declared above. Answering an invalid body before an unauthenticated one would tell any caller what a valid body looks like.
+The validation is a `before_action` registered at include time, so `skip_before_action` has an entry to delete. Each RPC definition re-registers it through `method_added`, which moves it to the end of the chain, behind authentication declared above. Answering an invalid request before an unauthenticated one would tell any caller what a valid request looks like.
 
 `google.rpc.BadRequest` is looked up in the descriptor pool rather than required, because googleapis belongs to the application: it may generate `error_details.proto` itself or bundle `googleapis-common-protos-types`.
 
 ## Conformance
 
-The official [connectrpc/conformance](https://github.com/connectrpc/conformance) suite lives in [`conformance/`](conformance/) and passes all 84 in-scope cases (Connect protocol, unary) with the server-under-test mounted through an `ActionDispatch` `RouteSet`. That covers error details, response headers and trailers on success and error, `connect-timeout-ms` enforcement, and the HTTP status mapping for malformed requests (404 unknown method, 405 wrong verb, 415 unsupported media type, `unimplemented` for unimplemented methods and unsupported compression). It is the interop check hand-written specs cannot give.
+The official [connectrpc/conformance](https://github.com/connectrpc/conformance) suite lives in [`conformance/`](conformance/) and passes all 86 in-scope cases (Connect protocol, unary, over POST and GET) with the server-under-test mounted through an `ActionDispatch` `RouteSet`. That covers GET for side-effect-free RPCs, error details, response headers and trailers on success and error, `connect-timeout-ms` enforcement, and the HTTP status mapping for malformed requests (404 unknown method, 405 wrong verb, 415 unsupported media type, `unimplemented` for unimplemented methods and unsupported compression). It is the interop check hand-written specs cannot give.
 
 ## Scope
 
-Streaming (enveloped framing), gRPC and gRPC-Web compatibility, request compression, and the idempotent GET variant are out of scope. Unary over the Connect protocol is the whole surface, and the rest is added only when a real consumer needs it.
+Streaming (enveloped framing), gRPC and gRPC-Web compatibility, and request compression are out of scope. Unary over the Connect protocol, by POST and by GET for side-effect-free RPCs, is the whole surface, and the rest is added only when a real consumer needs it.
 
 ## Source layout
 
@@ -92,6 +108,7 @@ lib/connect_rpc_rails/
   railtie.rb              # installs the routes DSL and Connect's content type at Rails boot
   service_registration.rb # descriptor to RPC table (reflection)
   codec.rb                # JSON and proto, via google-protobuf
+  get_query.rb            # the query string of a Connect GET
   errors.rb               # Connect codes to HTTP status, wire error body
   exceptions_app.rb       # config.exceptions_app wrapper for what escapes the controller
   message_validatable.rb  # optional buf.validate checks (require "connect_rpc_rails/protovalidate")

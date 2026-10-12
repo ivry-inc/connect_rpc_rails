@@ -55,7 +55,7 @@ The deadline is enforced with `Timeout.timeout`, so an action past its deadline 
 
 Callbacks are the only extension point. Use `before_action` for authentication, `around_action` to wrap a call, and `rescue_from` or [`map_connect_errors`](error-handling.md#mapping-domain-exceptions) for exception mapping.
 
-The request body is decoded before any callback runs, so a `before_action` can already read `connect_request`. `only:`, `except:`, `skip_before_action`, and inheritance work as usual. Share logic across services with an `ActiveSupport::Concern` or a base controller:
+The request message is decoded before any callback runs, so a `before_action` can already read `connect_request`. `only:`, `except:`, `skip_before_action`, and inheritance work as usual. Share logic across services with an `ActiveSupport::Concern` or a base controller:
 
 ```ruby
 # app/controllers/concerns/bearer_authentication.rb
@@ -78,7 +78,44 @@ end
 
 A callback halts the Rails way: `render` a response, or raise a `ConnectRpcRails::Error` and let the library render the wire error.
 
-The library's transport checks run in a `prepend_before_action`, ahead of every application callback. A request with the wrong verb (405), an unsupported content type (415), an unsupported `content-encoding` (`unimplemented`), or an undecodable body (`invalid_argument`) is answered before authentication sees it.
+The library's transport checks run in a `prepend_before_action`, ahead of every application callback. A request with the wrong verb (405), an unsupported content type or GET `encoding` (415), unsupported compression (`unimplemented`), or an undecodable message (`invalid_argument`) is answered before authentication sees it.
+
+## Serving GET
+
+A unary RPC the `.proto` declares free of side effects can be called with GET as well as POST:
+
+```protobuf
+service GreetService {
+  rpc SayHello(SayHelloRequest) returns (SayHelloResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
+}
+```
+
+A GET carries the request in its query string, so the URL alone identifies the call:
+
+```
+GET /greet.v1.GreetService/SayHello?connect=v1&encoding=json&message=%7B%22name%22%3A%22Ada%22%7D
+```
+
+Clients send GET only when asked to: connect-es with `useHttpGet: true` on `createConnectTransport`, connect-go with the `WithHTTPGet` client option. Both use POST for an RPC without the option.
+
+Nothing changes in the controller. A GET reaches the same action, `connect_request` is decoded from the `message` parameter before the callbacks run, and the response is encoded in the codec the `encoding` parameter names. `params` holds the decoded message and any query parameters other than Connect's own, unless Rails cannot parse the query (a binary message sent without `base64=1`, or any parameter that is not valid UTF-8). In that case it holds only the decoded message.
+
+The library sets no cache headers. Set them in the action as in any controller:
+
+```ruby
+def say_hello
+  expires_in 5.minutes
+  Greet::V1::SayHelloResponse.new(greeting: "Hello, #{connect_request.name}!")
+end
+```
+
+`expires_in` alone marks the response `private`, so only the caller's own browser keeps it. `public: true` or `s-maxage` lets a shared cache such as a CDN serve one caller's response to every request for that URL, whatever its `Authorization` header and without running the controller's authentication. Use them only on an RPC whose response does not depend on who is calling.
+
+Only `NO_SIDE_EFFECTS` opens GET. `IDEMPOTENT`, or no option at all, keeps the RPC POST-only, and a GET to it is answered 405, as is a GET to a streaming RPC whatever its option. The option is a promise the action has to keep: a GET needs no CORS preflight and can be sent by a link or an `<img>` tag on any site, so an RPC that changes state must not carry it.
+
+A GET's request travels in its URL, where `config.filter_parameters` cannot mask the message's fields: Rails filters a query value by its key alone. The raw message reaches Rails' `Started GET` log line, the `path` of the controller instrumentation payloads, proxy, load balancer and CDN access logs, and browser history. `config.filter_parameters += [/\Amessage\z/]` masks it in Rails' own output, and also masks any request field named `message`. An RPC whose request carries credentials or personal data should not be declared `NO_SIDE_EFFECTS`.
 
 ## Instrumentation
 
@@ -91,4 +128,4 @@ Rails.application.configure do
 end
 ```
 
-The decoded request is also exposed as `request_parameters`, so the Rails request log and `config.filter_parameters` apply to it.
+The decoded request is also exposed as `request_parameters`, so it appears in `payload[:params]` and the request log's `Parameters:` line, filtered by `config.filter_parameters`. A GET's URL is not filtered by field (see [Serving GET](#serving-get)). The `format` is the request's codec, `:json` or `:proto`, whether it came from the content type or a GET's `encoding`.

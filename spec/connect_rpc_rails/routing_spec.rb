@@ -74,7 +74,7 @@ RSpec.describe ConnectRpcRails::Routing do
       .to eq(controller: "greet", action: "say_hello")
   end
 
-  it "routes a non-POST verb to the action too (the controller answers 405)" do
+  it "routes a non-POST verb to the action too (the controller decides which verbs the RPC takes)" do
     expect(routes.recognize_path("/greet.v1.GreetService/SayHello", method: :get))
       .to eq(controller: "greet", action: "say_hello")
   end

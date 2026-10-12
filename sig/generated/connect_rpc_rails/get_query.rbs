@@ -1,0 +1,44 @@
+# Generated from lib/connect_rpc_rails/get_query.rb with RBS::Inline
+
+module ConnectRpcRails
+  # The query string of a Connect unary GET, which carries the codec, compression and message
+  # a POST sends as headers and body:
+  #
+  #   GET /greet.v1.GreetService/SayHello?connect=v1&encoding=json&message=%7B%22name%22%3A%22Ada%22%7D
+  class GetQuery
+    # The parameters the protocol defines. Any other parameter is allowed and ignored.
+    PARAMS: Array[String]
+
+    # The `connect` value Connect clients send, the GET counterpart of `connect-protocol-version: 1`.
+    PROTOCOL_VERSION: String
+
+    # RFC 4648 §5 base64, unpadded or padded to a whole quantum.
+    URL_SAFE_BASE64: Regexp
+
+    # Raised when the `message` parameter is missing or is not the base64 it claims to be.
+    class InvalidMessage < StandardError
+    end
+
+    # Each parameter takes its first value, and a pair with invalid percent-encoding is
+    # dropped, as connect-go reads a query.
+    # : (String) -> GetQuery
+    def self.parse: (String) -> GetQuery
+
+    # : (Hash[String, String]) -> void
+    def initialize: (Hash[String, String]) -> void
+
+    # : () -> String?
+    def connect: () -> String?
+
+    # : () -> String?
+    def encoding: () -> String?
+
+    # : () -> String?
+    def compression: () -> String?
+
+    # The `message` parameter's bytes. With `base64=1` it is URL-safe base64, padded or not;
+    # any other `base64` value is ignored, per the protocol.
+    # : () -> String
+    def message: () -> String
+  end
+end

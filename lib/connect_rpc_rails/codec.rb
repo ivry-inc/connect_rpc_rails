@@ -23,6 +23,15 @@ module ConnectRpcRails
       end
     end
 
+    # The codec a Connect GET names in its `encoding` query parameter.
+    #: (String?) -> _Codec?
+    def self.for_name(name)
+      case name
+      when 'json' then Json
+      when 'proto' then Proto
+      end
+    end
+
     module Json
       CONTENT_TYPE = 'application/json' #: String
 

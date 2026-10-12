@@ -42,8 +42,9 @@ class ConformanceController < ActionController::API
   connect_service SERVICE_NAME
 end
 
-# Only Unary is implemented; the rest of the service answers `unimplemented`, which is what
-# the conformance suite expects of a server that doesn't serve them.
+# Every RPC the service declares is routed. Unary and IdempotentUnary are implemented; the
+# rest answer `unimplemented`, which is what the suite expects of a server that doesn't serve
+# them.
 routes = ActionDispatch::Routing::RouteSet.new
 routes.draw do
   connect_service SERVICE_NAME => "conformance"

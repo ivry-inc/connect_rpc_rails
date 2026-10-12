@@ -14,8 +14,9 @@ module ConnectRpcRails
   #
   #   config.exceptions_app = ConnectRpcRails::ExceptionsApp.new(MyExceptions.new(Rails.public_path))
   #
-  # A Connect request is recognized by `connect-protocol-version`, which the protocol
-  # requires on every unary call; anything else reaches the wrapped app untouched.
+  # A Connect request is recognized by the `connect-protocol-version` header Connect clients
+  # send on a unary POST, or by the `connect=v1` query parameter they send on a GET; anything
+  # else reaches the wrapped app untouched.
   class ExceptionsApp
     # `connect-protocol-version`, as Rack names it in the env.
     PROTOCOL_VERSION_HEADER = "HTTP_CONNECT_PROTOCOL_VERSION"
@@ -28,9 +29,18 @@ module ConnectRpcRails
     #: (Hash[String, untyped]) -> [Integer, Hash[String, String], Array[String]]
     def call(env)
       exception = env["action_dispatch.exception"]
-      return @app.call(env) unless exception && env[PROTOCOL_VERSION_HEADER]
+      return @app.call(env) unless exception && connect_request?(env)
 
       render_connect_error(connect_error_for(exception, env))
+    end
+
+    #: (Hash[String, untyped]) -> bool
+    private def connect_request?(env)
+      return true if env[PROTOCOL_VERSION_HEADER]
+
+      # ActionDispatch::ShowExceptions turns every request into a GET before calling this app.
+      method = env.fetch("action_dispatch.original_request_method") { env["REQUEST_METHOD"] }
+      method == "GET" && GetQuery.parse(env["QUERY_STRING"].to_s).connect == GetQuery::PROTOCOL_VERSION
     end
 
     # The error to send for an escaped exception. The message is the status's own text,

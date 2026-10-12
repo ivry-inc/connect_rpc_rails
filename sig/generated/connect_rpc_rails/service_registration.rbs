@@ -16,6 +16,8 @@ module ConnectRpcRails
   # so leftover instance state could leak between callers, whereas Rails builds a
   # controller per request.
   class ServiceRegistration
+    # `idempotency_level` is the method option's enum symbol: `:NO_SIDE_EFFECTS`, `:IDEMPOTENT`
+    # or `:IDEMPOTENCY_UNKNOWN`. `streaming` is true when either side of the RPC streams.
     class Rpc < Struct[untyped]
       attr_accessor name(): untyped
 
@@ -25,8 +27,12 @@ module ConnectRpcRails
 
       attr_accessor output_class(): untyped
 
-      def self.new: (?name: untyped, ?action: untyped, ?input_class: untyped, ?output_class: untyped) -> instance
-                  | ({ ?name: untyped, ?action: untyped, ?input_class: untyped, ?output_class: untyped }) -> instance
+      attr_accessor idempotency_level(): untyped
+
+      attr_accessor streaming(): untyped
+
+      def self.new: (?name: untyped, ?action: untyped, ?input_class: untyped, ?output_class: untyped, ?idempotency_level: untyped, ?streaming: untyped) -> instance
+                  | ({ ?name: untyped, ?action: untyped, ?input_class: untyped, ?output_class: untyped, ?idempotency_level: untyped, ?streaming: untyped }) -> instance
     end
 
     attr_reader service_name: String

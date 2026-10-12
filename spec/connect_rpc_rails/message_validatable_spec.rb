@@ -90,6 +90,16 @@ RSpec.describe(ConnectRpcRails::MessageValidatable) do
       .to eq(["parts[1].part_name", 'labels["primary"].part_name'])
   end
 
+  it "names fields in the encoding a GET request names" do
+    message = invalid_request(preferred_language: "e")
+
+    _, _, json_body = call_connect_get(define_controller, "SayHello", connect_get_params(message, encoding: :json))
+    _, _, proto_body = call_connect_get(define_controller, "SayHello", connect_get_params(message, encoding: :proto))
+
+    expect(bad_request_of(json_body).field_violations.map(&:field)).to eq(["preferredLanguage"])
+    expect(bad_request_of(proto_body).field_violations.map(&:field)).to eq(["preferred_language"])
+  end
+
   it "lets a valid request through to the RPC" do
     status, _, body = call_json(define_controller, invalid_request)
 

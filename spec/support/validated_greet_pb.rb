@@ -10,6 +10,7 @@ require "buf/validate/validate_pb"
 # Stands in for `buf generate` over a greet service carrying buf.validate rules, built by hand
 # like the example's greet_pb.rb so the suite needs no protoc toolchain. The multi-word, repeated
 # and map fields are what make a published field path distinguishable from the proto one.
+# SayHello is free of side effects, so it can be called with GET too.
 module Validated
   module V1
     def self.field(name, number, json_name:, type: :TYPE_STRING, label: :LABEL_OPTIONAL, **rest)
@@ -79,6 +80,7 @@ module Validated
               name: "SayHello",
               input_type: ".validated.v1.SayHelloRequest",
               output_type: ".validated.v1.SayHelloResponse",
+              options: Google::Protobuf::MethodOptions.new(idempotency_level: :NO_SIDE_EFFECTS),
             ),
           ],
         ),
