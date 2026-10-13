@@ -26,7 +26,7 @@ A Connect call is an HTTP request, so there is no separate context object:
 
 | What | Where |
 |---|---|
-| The decoded request message | `connect_request`, read the way `params` is read |
+| The decoded request message | `connect_request` (or its shorthand `message`), read the way `params` is read |
 | Request metadata | `connect_metadata` (request headers, downcased and dasherized), or `request.headers` |
 | Leading response metadata | `response.headers` |
 | Trailing response metadata | `connect_trailers["x-audit"] = ["1"]` |
@@ -37,7 +37,7 @@ A Connect call is an HTTP request, so there is no separate context object:
 
 ### Sorbet
 
-With [tapioca](https://github.com/Shopify/tapioca) in the bundle, `tapioca dsl` picks up a compiler shipped in this gem that types `connect_request` on every controller declaring `connect_service`: as the request class when all of the service's RPCs take the same one, and as their union otherwise, which an action narrows itself.
+With [tapioca](https://github.com/Shopify/tapioca) in the bundle, `tapioca dsl` picks up a compiler shipped in this gem that types `connect_request` and `message` on every controller declaring `connect_service`: as the request class when all of the service's RPCs take the same one, and as their union otherwise, which an action narrows itself.
 
 ```rbi
 class GreetController
@@ -45,6 +45,9 @@ class GreetController
 
   sig { returns(::Greet::V1::SayHelloRequest) }
   def connect_request; end
+
+  sig { returns(::Greet::V1::SayHelloRequest) }
+  def message; end
 end
 ```
 
