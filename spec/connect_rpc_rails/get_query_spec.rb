@@ -24,8 +24,8 @@ RSpec.describe(ConnectRpcRails::GetQuery) do
       expect(message_of("message=%7B%22name%22%3A%22a+b%22%7D")).to eq('{"name":"a b"}')
     end
 
-    it "drops a pair with invalid percent-encoding" do
-      expect(described_class.parse("encoding=%zz&encoding=json").encoding).to eq("json")
+    it "keeps an invalid percent-escape as written" do
+      expect(described_class.parse("encoding=%zz&encoding=json").encoding).to eq("%zz")
     end
   end
 

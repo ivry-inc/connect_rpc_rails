@@ -12,15 +12,18 @@ module ConnectRpcRails
     # The `connect` value Connect clients send, the GET counterpart of `connect-protocol-version: 1`.
     PROTOCOL_VERSION: String
 
-    # RFC 4648 §5 base64, unpadded or padded to a whole quantum.
+    # The RFC 4648 §5 alphabet. Base64.urlsafe_decode64 checks the padding and the length, but
+    # also takes "+" and "/" from the standard alphabet.
     URL_SAFE_BASE64: Regexp
 
     # Raised when the `message` parameter is missing or is not the base64 it claims to be.
     class InvalidMessage < StandardError
     end
 
-    # Each parameter takes its first value, and a pair with invalid percent-encoding is
-    # dropped, as connect-go reads a query.
+    # Each parameter takes its first value. An invalid percent-escape is kept as written, as
+    # URI.decode_www_form does, so it fails as an unknown value rather than being dropped. The
+    # query is decoded as binary, because decoding as UTF-8 scrubs the bytes of an unencoded
+    # binary message; values are then tagged UTF-8 without being checked.
     # : (String) -> GetQuery
     def self.parse: (String) -> GetQuery
 

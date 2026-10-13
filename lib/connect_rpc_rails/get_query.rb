@@ -4,6 +4,7 @@
 # Copyright 2026 IVRy Inc.
 # SPDX-License-Identifier: Apache-2.0
 
+require "base64"
 require "uri"
 
 module ConnectRpcRails
@@ -18,25 +19,23 @@ module ConnectRpcRails
     # The `connect` value Connect clients send, the GET counterpart of `connect-protocol-version: 1`.
     PROTOCOL_VERSION = "v1" #: String
 
-    # RFC 4648 §5 base64, unpadded or padded to a whole quantum.
-    URL_SAFE_BASE64 = /\A(?:[A-Za-z0-9_-]{4})*(?:[A-Za-z0-9_-]{2}(?:==)?|[A-Za-z0-9_-]{3}=?)?\z/ #: Regexp
+    # The RFC 4648 §5 alphabet. Base64.urlsafe_decode64 checks the padding and the length, but
+    # also takes "+" and "/" from the standard alphabet.
+    URL_SAFE_BASE64 = /\A[A-Za-z0-9_-]*={0,2}\z/ #: Regexp
 
     # Raised when the `message` parameter is missing or is not the base64 it claims to be.
     class InvalidMessage < StandardError; end
 
-    # Each parameter takes its first value, and a pair with invalid percent-encoding is
-    # dropped, as connect-go reads a query.
+    # Each parameter takes its first value. An invalid percent-escape is kept as written, as
+    # URI.decode_www_form does, so it fails as an unknown value rather than being dropped. The
+    # query is decoded as binary, because decoding as UTF-8 scrubs the bytes of an unencoded
+    # binary message; values are then tagged UTF-8 without being checked.
     #: (String) -> GetQuery
     def self.parse(query_string)
       params = {} #: Hash[String, String]
-      query_string.split("&").each do |pair|
-        raw_key, raw_value = pair.split("=", 2)
-        key = URI.decode_www_form_component(raw_key.to_s)
-        next if !PARAMS.include?(key) || params.key?(key)
-
-        params[key] = URI.decode_www_form_component(raw_value.to_s)
-      rescue ArgumentError
-        next
+      URI.decode_www_form(query_string, Encoding::BINARY).each do |key, value|
+        key = key.force_encoding(Encoding::UTF_8)
+        params[key] = value.force_encoding(Encoding::UTF_8) if PARAMS.include?(key) && !params.key?(key)
       end
       new(params)
     end
@@ -63,8 +62,9 @@ module ConnectRpcRails
       return message unless @params["base64"] == "1"
       raise InvalidMessage, "invalid message query parameter" unless URL_SAFE_BASE64.match?(message)
 
-      standard = message.delete("=").tr("-_", "+/")
-      (standard + "=" * (-standard.length % 4)).unpack1("m").to_s
+      Base64.urlsafe_decode64(message)
+    rescue ArgumentError
+      raise InvalidMessage, "invalid message query parameter"
     end
   end
 end
