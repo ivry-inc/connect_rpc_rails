@@ -42,9 +42,9 @@ A violation is answered as [AIP-193](https://google.aip.dev/193) describes: `inv
  "details": [{"type": "google.rpc.BadRequest", "value": "..."}]}
 ```
 
-- Fields are named in the caller's encoding: `preferredLanguage` for a JSON body, `preferred_language` for a binary one. Nested paths are spelled the same way, such as `parts[1].partName` and `labels["primary"].partName`.
+- Fields are named in the caller's encoding: `preferredLanguage` for a JSON request, `preferred_language` for a binary one. Nested paths are spelled the same way, such as `parts[1].partName` and `labels["primary"].partName`.
 - The reason is the rule id upper-snake-cased (`string.min_len` becomes `STRING_MIN_LEN`), or `INVALID_VALUE` for an id that cannot be an AIP-193 reason.
-- The check runs after the controller's authentication. It is a `before_action` that moves behind the callbacks declared above each RPC definition, so an unauthenticated caller is answered `unauthenticated` without its body being judged, and learns nothing about what a valid body looks like.
+- The check runs after the controller's authentication. It is a `before_action` that moves behind the callbacks declared above each RPC definition, so an unauthenticated caller is answered `unauthenticated` without its request being judged, and learns nothing about what a valid request looks like.
 
 ## Answering differently
 

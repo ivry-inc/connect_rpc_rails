@@ -123,6 +123,34 @@ RSpec.describe(ConnectRpcRails::ExceptionsApp) do
     expect(host_app.calls).to(eq(0))
   end
 
+  describe "a request without connect-protocol-version, reached through ShowExceptions" do
+    def call_through_show_exceptions(method, query)
+      raising = ->(_env) { raise(ActionController::BadRequest, "unreadable") }
+      env = Rack::MockRequest.env_for("/#{GreetHelpers::SERVICE_NAME}/SayHello?#{query}", method:)
+      ActionDispatch::ShowExceptions.new(raising, app).call(env)
+    end
+
+    it "answers a GET carrying connect=v1, as Connect clients send, in the Connect shape" do
+      response = call_through_show_exceptions("GET", "connect=v1&encoding=json&message=%7B%7D")
+
+      expect(response[0]).to(eq(400))
+      expect(wire_body(response)).to(eq({"code" => "invalid_argument", "message" => "Bad Request"}))
+      expect(host_app.calls).to(eq(0))
+    end
+
+    it "passes a plain GET to the wrapped app" do
+      call_through_show_exceptions("GET", "page=2")
+
+      expect(host_app.calls).to(eq(1))
+    end
+
+    it "passes a POST to the wrapped app even with connect=v1 in its query" do
+      call_through_show_exceptions("POST", "connect=v1")
+
+      expect(host_app.calls).to(eq(1))
+    end
+  end
+
   it "lets a subclass add details to an exception it did not classify itself" do
     response = DetailedExceptionsApp.new(host_app).call(
       exceptions_env(exception: RuntimeError.new("boom"), "action_dispatch.request_id" => "req-1"),

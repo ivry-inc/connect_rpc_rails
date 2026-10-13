@@ -55,10 +55,12 @@ Every name in the block must be an RPC the descriptor declares, so a typo or a r
 | Request | Answer |
 |---|---|
 | `POST` to a declared RPC the controller implements | The action's response |
-| `POST` to a declared RPC the controller does not implement | Connect `unimplemented` (HTTP 501) |
+| `GET` to a declared unary RPC the `.proto` marks `NO_SIDE_EFFECTS`, which the controller implements | The action's response, as for `POST` (see [Serving GET](controllers.md#serving-get)) |
+| `POST`, or an allowed `GET`, to a declared RPC the controller does not implement | Connect `unimplemented` (HTTP 501) |
 | Any verb to a method the descriptor does not declare, under the service's prefix | 404 |
-| A non-`POST` verb to a declared RPC | 405 |
-| A content type other than `application/json` or `application/proto` | 415 |
+| `GET` to a declared RPC not marked `NO_SIDE_EFFECTS`, or to a streaming one | 405, with `Allow: POST` |
+| Any other verb to a declared RPC | 405, with `Allow` naming `POST`, and `GET` where it is allowed |
+| A content type other than `application/json` or `application/proto`, or a GET `encoding` other than `json` or `proto` | 415 |
 
 The catch-all and the unimplemented answer are controller actions, so the controller's own callbacks run first: with authentication in a `before_action`, an unauthenticated caller is answered `unauthenticated` instead. The 405 and 415 checks run ahead of every callback.
 

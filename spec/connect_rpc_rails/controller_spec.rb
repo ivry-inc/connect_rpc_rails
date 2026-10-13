@@ -58,7 +58,26 @@ RSpec.describe ConnectRpcRails::Controller do
     expect(status).to eq(415)
   end
 
-  it "returns 405 for a non-POST verb" do
+  it "answers request compression with unimplemented, naming the supported encodings" do
+    env = Rack::MockRequest.env_for(
+      "/#{GreetHelpers::SERVICE_NAME}/SayHello",
+      method: "POST",
+      input: "x",
+      "CONTENT_TYPE" => "application/json",
+      "HTTP_CONTENT_ENCODING" => "gzip",
+    )
+
+    status, headers, resp = call_action(GreetRpcController, "SayHello", env)
+
+    expect(status).to eq(501)
+    expect(headers["accept-encoding"]).to eq("identity")
+    expect(JSON.parse(resp)).to eq(
+      "code" => "unimplemented",
+      "message" => 'unsupported content-encoding "gzip": supported encodings are identity',
+    )
+  end
+
+  it "returns 405 for GET to an RPC not declared free of side effects" do
     env = Rack::MockRequest.env_for("/#{GreetHelpers::SERVICE_NAME}/SayHello", method: "GET")
 
     status, = GreetRpcController.action("say_hello").call(env)

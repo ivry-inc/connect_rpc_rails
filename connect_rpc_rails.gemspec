@@ -27,6 +27,7 @@ Gem::Specification.new do |spec|
   spec.require_paths = ["lib"]
 
   spec.add_dependency "actionpack", ">= 7.0"
+  spec.add_dependency "base64"
   spec.add_dependency "google-protobuf", "~> 4.26"
 
   # The gems the optional protovalidate integration binds to, and the google.rpc messages it

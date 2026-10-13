@@ -7,6 +7,7 @@
 require 'connect_rpc_rails/version'
 require 'connect_rpc_rails/errors'
 require 'connect_rpc_rails/codec'
+require 'connect_rpc_rails/get_query'
 require 'connect_rpc_rails/service_registration'
 require 'connect_rpc_rails/controller'
 require 'connect_rpc_rails/routing'

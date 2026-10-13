@@ -56,6 +56,9 @@ module ConnectRpcRails
 
     UNKNOWN_METHOD_PARAM: ::String
 
+    # The request compression the transport accepts, advertised when a call uses another.
+    SUPPORTED_COMPRESSION: Array[String]
+
     # The one `rescue_responses` entry that doesn't become a Connect error: #action_missing
     # raises ActionNotFound for a name that isn't an RPC, which means the app routed
     # something to an action this controller doesn't have. That is a misconfiguration for
@@ -112,14 +115,15 @@ module ConnectRpcRails
     # Connect actions decode the body themselves and never read `params`, so skip
     # Rails' lazy body param parsing: it would deserialize a JSON body a second time
     # (instrumentation reads filtered_parameters) and leak request payloads into
-    # logs. Query params still parse; instrumentation is otherwise unaffected.
-    # Runs before instrumentation reads the params, so it decodes the Connect body
-    # here (exactly once) and reuses it two ways: the typed message drives the action,
-    # and its hash form populates `request_parameters` — so the standard Rails request
-    # log, `config.filter_parameters`, and APM see the request without Rails parsing
-    # the body a second time. Also reports the wire format for logs/instrumentation
-    # (via the formats header rather than `request.format=`, which would inject a
-    # :format key into params).
+    # logs. Query params other than a GET's Connect parameters still parse; instrumentation
+    # is otherwise unaffected.
+    # Runs before instrumentation reads the params, so it decodes the Connect message (a
+    # POST's body, a GET's `message`) here, exactly once, and reuses it two ways: the
+    # typed message drives the action, and its hash form populates `request_parameters`
+    # — so the standard Rails request log, `config.filter_parameters`, and APM see the
+    # request without Rails parsing it a second time. Also reports the wire format for
+    # logs/instrumentation (via the formats header rather than `request.format=`, which
+    # would inject a :format key into params).
     def process_action: (*untyped) -> untyped
 
     # The RPC method is the controller's own method, so the transport wraps dispatch
@@ -153,6 +157,27 @@ module ConnectRpcRails
 
     private def connect_request_params: () -> untyped
 
+    # The serialized request message: the body of a POST, the `message` parameter of a GET.
+    # : () -> String
+    private def connect_request_bytes: () -> String
+
+    # Connect serves an RPC over GET only when it is unary and its `.proto` declares it free of
+    # side effects.
+    # : (ServiceRegistration::Rpc) -> bool
+    private def connect_get_allowed?: (ServiceRegistration::Rpc) -> bool
+
+    # Whether this call is a Connect GET, which carries its request in the query string.
+    # : () -> bool
+    private def connect_get?: () -> bool
+
+    # : () -> GetQuery
+    private def connect_get_query: () -> GetQuery
+
+    # A GET's query parameters are its request, which `request_parameters` already holds
+    # decoded, so `params` shows the message once. A query Rails refuses, such as a binary
+    # message sent without base64, keeps no parameters.
+    private def exclude_connect_query_parameters: () -> untyped
+
     # The transport preconditions have all passed by the time this runs (see
     # #validate_connect_request), so this is the wire round-trip and nothing else. The RPC
     # runs on this controller instance — the one Rails built for this request — and takes
@@ -160,14 +185,24 @@ module ConnectRpcRails
     # DSL checks that at boot), so there is no missing-method case.
     private def dispatch_connect_rpc: (untyped rpc) -> untyped
 
-    # The codec for this call's content-type. Never missing once the action runs:
-    # #validate_connect_request answers a content-type no codec handles with a 415.
+    # The codec for this call. Never missing once the action runs: #validate_connect_request
+    # answers a codec it has none for with a 415.
     # : () -> Codec::_Codec
     private def connect_codec: () -> Codec::_Codec
 
-    # Connect rejects unsupported request compression with `unimplemented`, advertising
-    # what it can accept.
+    # The codec the caller named: a GET's `encoding` parameter, a POST's content-type. Nil
+    # when no codec handles it.
+    # : () -> Codec::_Codec?
+    private def connect_requested_codec: () -> Codec::_Codec?
+
+    # Connect rejects unsupported request compression with `unimplemented`, naming what it
+    # can accept in both `accept-encoding` and the message. A GET names its compression in
+    # the query.
     private def reject_unsupported_encoding: () -> untyped
+
+    # `connect=v1` is optional, as the protocol lets a server accept a GET without it. Any
+    # other version is a revision of the protocol this server does not speak.
+    private def reject_unsupported_protocol_version: () -> untyped
 
     # The decoded request message, for the action to read the way an HTTP action reads
     # `params`. Assigned during decode, so callbacks see it too.

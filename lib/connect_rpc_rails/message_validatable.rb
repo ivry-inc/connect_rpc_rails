@@ -24,7 +24,7 @@ module ConnectRpcRails
   #     def say_hello = ...
   #   end
   #
-  # Fields are named in the caller's encoding: `preferredLanguage` for a JSON body,
+  # Fields are named in the caller's encoding: `preferredLanguage` for a JSON request,
   # `preferred_language` for a binary one. `google.rpc.BadRequest` is looked up in the
   # descriptor pool rather than required, because googleapis belongs to the application: it
   # generates `google/rpc/error_details.proto` alongside its own protos, or bundles
@@ -78,8 +78,8 @@ module ConnectRpcRails
     class_methods do
       # Rails appends a re-registered callback to the end of the chain, so defining an RPC
       # moves the validation behind the authentication a controller declares above it. An
-      # invalid body answered before an unauthenticated one would tell a caller what a valid
-      # body looks like. No entry means the controller skipped it, and it stays skipped.
+      # invalid request answered before an unauthenticated one would tell a caller what a valid
+      # request looks like. No entry means the controller skipped it, and it stays skipped.
       def method_added(method_name)
         super
         return unless connect_rpcs&.key?(method_name.to_s)

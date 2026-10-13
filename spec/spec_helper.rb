@@ -55,9 +55,33 @@ module GreetHelpers
       input: body,
       "CONTENT_TYPE" => content_type,
     )
-    env["HTTP_AUTHORIZATION"] = "Bearer #{bearer}" if bearer
     env["HTTP_CONNECT_TIMEOUT_MS"] = timeout_ms.to_s if timeout_ms
+    call_action(controller, method, env, bearer:)
+  end
 
+  # A Connect GET, whose request is the query string built from `query`.
+  def call_connect_get(controller, method, query, bearer: nil)
+    env = Rack::MockRequest.env_for("/#{SERVICE_NAME}/#{method}?#{URI.encode_www_form(query)}", method: "GET")
+    call_action(controller, method, env, bearer:)
+  end
+
+  # The query parameters a Connect client sends for `message` over GET.
+  def connect_get_params(message, encoding:)
+    case encoding
+    when :json
+      {connect: "v1", encoding: "json", message: message.class.encode_json(message)}
+    when :proto
+      {connect: "v1", base64: "1", encoding: "proto", message: url_safe_base64(message.class.encode(message))}
+    end
+  end
+
+  # Unpadded RFC 4648 §5 base64, as connect-es and connect-go send a binary message.
+  def url_safe_base64(bytes)
+    [bytes].pack("m0").tr("+/", "-_").delete("=")
+  end
+
+  private def call_action(controller, method, env, bearer: nil)
+    env["HTTP_AUTHORIZATION"] = "Bearer #{bearer}" if bearer
     status, headers, proxy = controller.action(ConnectRpcRails.underscore(method)).call(env)
     collected = +""
     proxy.each { |chunk| collected << chunk }

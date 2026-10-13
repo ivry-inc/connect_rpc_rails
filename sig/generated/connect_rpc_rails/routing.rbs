@@ -24,7 +24,7 @@ module ConnectRpcRails
   # service but not that method, so it is answered `unimplemented` the way a declared RPC
   # nobody implements always is.
   #
-  # Every RPC the descriptor declares becomes one `POST /<pkg.Service>/<Method>` route to
+  # Every RPC the descriptor declares becomes one `/<pkg.Service>/<Method>` route to
   # the action implementing it (1 RPC = 1 action), so the protobuf definition is the only
   # place the method list lives. A declared RPC the controller doesn't implement is
   # answered Connect `unimplemented` by the controller, not by a route. After the RPC

@@ -11,6 +11,7 @@ Services are read off the `google-protobuf` descriptor pool, so the only generat
 - Exceptions Rails already classifies become Connect codes without mapping: `ActiveRecord::RecordNotFound` is `not_found`
 - Connect-shaped errors even for exceptions that escape before dispatch, through `ConnectRpcRails::ExceptionsApp`
 - `connect-timeout-ms` deadlines, request metadata, and response trailers
+- Connect GET for RPCs the `.proto` declares free of side effects, as connect-es sends with `useHttpGet`
 - Optional request validation against [`buf.validate`](https://buf.build/docs/protovalidate/) rules through [protovalidate](https://github.com/sorah/protovalidate-rb)
 - Passes every in-scope case of the official [Connect conformance suite](conformance/)
 - RBS signatures included
@@ -99,7 +100,7 @@ Raise `ConnectRpcRails::Error.new(:invalid_argument, "name is required")` to ans
 
 ## Documentation
 
-- [Writing services](docs/controllers.md): reading the request, metadata, trailers, deadlines, callbacks
+- [Writing services](docs/controllers.md): reading the request, metadata, trailers, deadlines, callbacks, serving GET
 - [Routing](docs/routing.md): one controller per service or per RPC, and what unrouted calls are answered
 - [Error handling](docs/error-handling.md): Connect codes, Rails' exception classification, `map_connect_errors`, `ExceptionsApp`
 - [Validating requests with protovalidate](docs/protovalidate.md)
@@ -108,7 +109,7 @@ Raise `ConnectRpcRails::Error.new(:invalid_argument, "name is required")` to ans
 
 ## Caveats
 
-- Only the Connect protocol's unary RPCs are served. Streaming, gRPC and gRPC-Web, request compression, and the idempotent GET variant are out of scope.
+- Only the Connect protocol's unary RPCs are served, by POST, and by GET for RPCs declared free of side effects. Streaming, gRPC and gRPC-Web, and request compression are out of scope.
 - `connect-timeout-ms` is enforced with `Timeout.timeout`, which interrupts the action wherever it is running when the deadline passes.
 - The message of an exception mapped to a Connect code, including Rails-classified ones such as `ActiveRecord::RecordNotFound`, is sent to the caller as the error message.
 

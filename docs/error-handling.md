@@ -89,7 +89,7 @@ An exception raised before dispatch, such as a routing error or a failing middle
 config.exceptions_app = ConnectRpcRails::ExceptionsApp.new(ActionDispatch::PublicExceptions.new(Rails.public_path))
 ```
 
-A request carrying `connect-protocol-version`, which Connect clients send on every unary call, is answered with a Connect error. Everything else reaches the wrapped app untouched.
+A request carrying `connect-protocol-version`, which Connect clients send on every unary POST, or a GET carrying `connect=v1`, which they send on every GET, is answered with a Connect error. Everything else reaches the wrapped app untouched, including a GET without `connect=v1` that the controller would have served.
 
 A `ConnectRpcRails::Error` is sent as is. For any other exception, the code comes from the status `rescue_responses` assigns it, so classification stays in one place, and the message is the HTTP status text (`Not Found`), never the exception's message.
 

@@ -7,8 +7,9 @@ module ConnectRpcRails
   #
   #   config.exceptions_app = ConnectRpcRails::ExceptionsApp.new(MyExceptions.new(Rails.public_path))
   #
-  # A Connect request is recognized by `connect-protocol-version`, which the protocol
-  # requires on every unary call; anything else reaches the wrapped app untouched.
+  # A Connect request is recognized by the `connect-protocol-version` header Connect clients
+  # send on a unary POST, or by the `connect=v1` query parameter they send on a GET; anything
+  # else reaches the wrapped app untouched.
   class ExceptionsApp
     # `connect-protocol-version`, as Rack names it in the env.
     PROTOCOL_VERSION_HEADER: ::String
@@ -18,6 +19,9 @@ module ConnectRpcRails
 
     # : (Hash[String, untyped]) -> [Integer, Hash[String, String], Array[String]]
     def call: (Hash[String, untyped]) -> [ Integer, Hash[String, String], Array[String] ]
+
+    # : (Hash[String, untyped]) -> bool
+    private def connect_request?: (Hash[String, untyped]) -> bool
 
     # The error to send for an escaped exception. The message is the status's own text,
     # never the exception's, which can quote internals. Override in a subclass to add

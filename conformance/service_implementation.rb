@@ -4,19 +4,23 @@
 # SPDX-License-Identifier: Apache-2.0
 
 require "google/protobuf/well_known_types"
+require "uri"
 
 module Conformance
   V1 = Connectrpc::Conformance::V1
 
   # Implements connectrpc.conformance.v1.ConformanceService against the
   # connect_rpc_rails library. Mixed into the controller, so the RPCs are its actions
-  # and every request gets a fresh instance. Only Unary is implemented, and only Unary is
-  # routed: the rest of the service (streaming, the Connect GET variant, the suite's
-  # Unimplemented method) is answered by the routes' catch-all with `unimplemented`, which
-  # is exactly what the suite expects. Streaming and GET are out of scope for this unary
-  # library and are excluded by conformance/config.yaml.
+  # and every request gets a fresh instance. Only Unary and IdempotentUnary are implemented.
+  # IdempotentUnary is declared free of side effects, so the suite calls it with Connect GET.
+  # The rest (streaming, the suite's Unimplemented method) answer `unimplemented`, which is
+  # what the suite expects of a server that does not serve them.
   module ServiceImplementation
-    def unary
+    def unary = respond_unary(V1::UnaryResponse)
+
+    def idempotent_unary = respond_unary(V1::IdempotentUnaryResponse)
+
+    private def respond_unary(response_class)
       message = connect_request
       definition = message.response_definition
       apply_response_metadata(definition) if definition
@@ -25,7 +29,7 @@ module Conformance
 
       raise error_from(definition.error, request_info) if definition && !definition.error.nil?
 
-      V1::UnaryResponse.new(
+      response_class.new(
         payload: V1::ConformancePayload.new(
           data: definition ? definition.response_data : "".b,
           request_info: request_info,
@@ -46,6 +50,17 @@ module Conformance
         request_headers: headers(connect_metadata),
         requests: messages.map { |message| Google::Protobuf::Any.pack(message) },
         timeout_ms: connect_timeout_ms,
+        connect_get_info:,
+      )
+    end
+
+    # The suite compares a GET's query parameters with what it sent only when they are echoed.
+    private def connect_get_info
+      return unless request.get?
+
+      params = URI.decode_www_form(request.query_string).group_by(&:first)
+      V1::ConformancePayload::ConnectGetInfo.new(
+        query_params: params.map { |name, pairs| V1::Header.new(name:, value: pairs.map(&:last)) },
       )
     end
 

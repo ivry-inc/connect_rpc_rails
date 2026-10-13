@@ -2,21 +2,21 @@
 
 Runs the official [connectrpc/conformance](https://github.com/connectrpc/conformance)
 suite against the library, scoped to what it implements (Connect
-protocol, unary, no TLS/streaming — see `config.yaml`).
+protocol, unary over POST and GET, no TLS/streaming — see `config.yaml`).
 
 ## Current result
 
 ```
-84 passed, 0 failed
+86 passed, 0 failed
 ```
 
-Every in-scope case passes, including error details, response headers/trailers,
+Every in-scope case passes, including Connect GET to the side-effect-free
+`IdempotentUnary`, error details, response headers/trailers,
 `connect-timeout-ms` enforcement and deadline propagation, and the HTTP-status
 mapping for malformed requests (404/405/415, unsupported compression).
 
 Out of scope (excluded via `config.yaml`, not failures):
-streaming, gRPC / gRPC-Web, request compression, TLS, and the idempotent-GET
-variant.
+streaming, gRPC / gRPC-Web, request compression, and TLS.
 
 ## Prerequisites (one-time)
 
@@ -46,6 +46,6 @@ tmp/bin/connectconformance --trace --mode server --conf conformance/config.yaml 
   boots the `ConnectRpcRails::Controller` (serving `ConformanceService`) mounted through
   an `ActionDispatch` `RouteSet` on Puma, writes the port back on stdout.
 - `service_implementation.rb` — `ConformanceService` implemented against the library
-  (only `Unary`, which is also the only method the routes declare; the rest of the service
-  is answered `unimplemented` by the routes' catch-all).
+  (`Unary`, and `IdempotentUnary`, which the suite calls with GET; the rest of the service is
+  routed and answered `unimplemented`).
 - `config.yaml` — restricts the suite to the implemented surface.
