@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- A tapioca DSL compiler types `connect_request` on each controller declaring `connect_service`:
+  the RPCs' request class, or the union of the classes when they take different ones.
+
 ## 0.2.0 (2026-10-14)
 
 - Connect GET: a unary RPC whose `.proto` sets `idempotency_level = NO_SIDE_EFFECTS` is also
