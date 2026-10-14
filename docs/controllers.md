@@ -35,6 +35,19 @@ A Connect call is an HTTP request, so there is no separate context object:
 
 `connect_trailers` writes Connect's unary wire form (`trailer-`-prefixed headers) for you, on success and on error.
 
+### Sorbet
+
+With [tapioca](https://github.com/Shopify/tapioca) in the bundle, `tapioca dsl` picks up a compiler shipped in this gem that types `connect_request` on every controller declaring `connect_service`: as the request class when all of the service's RPCs take the same one, and as their union otherwise, which an action narrows itself.
+
+```rbi
+class GreetController
+  private
+
+  sig { returns(::Greet::V1::SayHelloRequest) }
+  def connect_request; end
+end
+```
+
 ## Deadlines
 
 When the caller sends `connect-timeout-ms`, the whole action, callbacks included, runs under that deadline. Exceeding it answers `deadline_exceeded`. A malformed header value is answered `invalid_argument`.

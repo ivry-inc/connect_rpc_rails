@@ -42,4 +42,5 @@ Gem::Specification.new do |spec|
   spec.add_development_dependency "rubocop", "~> 1.0"
   spec.add_development_dependency "rubocop-shopify", "~> 2.0"
   spec.add_development_dependency "steep", "~> 2.0"
+  spec.add_development_dependency "tapioca", "~> 0.20"
 end
