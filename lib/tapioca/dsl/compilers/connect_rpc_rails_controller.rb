@@ -8,8 +8,8 @@ return unless defined?(ConnectRpcRails::Controller)
 module Tapioca
   module Dsl
     module Compilers
-      # Types `connect_request` on each controller that declares `connect_service`, so an RPC
-      # reads the decoded request as its message class without a cast.
+      # Types `connect_request` and `message` on each controller that declares `connect_service`,
+      # so an RPC reads the decoded request as its message class without a cast.
       #
       # A controller whose RPCs take one message class gets that class:
       #
@@ -30,6 +30,9 @@ module Tapioca
       #
       #   sig { returns(::Greet::V1::SayHelloRequest) }
       #   def connect_request; end
+      #
+      #   sig { returns(::Greet::V1::SayHelloRequest) }
+      #   def message; end
       # end
       # ~~~
       #
@@ -41,7 +44,9 @@ module Tapioca
         #: -> void
         def decorate
           root.create_path(constant) do |controller|
-            controller.create_method("connect_request", return_type: return_type, visibility: RBI::Private.new)
+            ["connect_request", "message"].each do |name|
+              controller.create_method(name, return_type: return_type, visibility: RBI::Private.new)
+            end
           end
         end
 

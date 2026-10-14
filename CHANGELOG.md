@@ -2,8 +2,10 @@
 
 ## Unreleased
 
-- A tapioca DSL compiler types `connect_request` on each controller declaring `connect_service`:
-  the RPCs' request class, or the union of the classes when they take different ones.
+- `message` reads the decoded request, as shorthand for `connect_request`.
+- A tapioca DSL compiler types `connect_request` and `message` on each controller declaring
+  `connect_service`: the RPCs' request class, or the union of the classes when they take
+  different ones.
 
 ## 0.2.0 (2026-10-14)
 

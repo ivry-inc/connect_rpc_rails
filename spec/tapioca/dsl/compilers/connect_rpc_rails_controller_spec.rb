@@ -60,7 +60,7 @@ RSpec.describe(Tapioca::Dsl::Compilers::ConnectRpcRailsController) do
     expect(context.gathered_constants).not_to include("NoServiceCompilerTestController")
   end
 
-  it "types connect_request as the one class a controller's RPCs take" do
+  it "types connect_request and message as the one class a controller's RPCs take" do
     expect(context.rbi_for(:SingleInputCompilerTestController)).to eq(<<~RBI)
       # typed: strong
 
@@ -69,11 +69,14 @@ RSpec.describe(Tapioca::Dsl::Compilers::ConnectRpcRailsController) do
 
         sig { returns(::Greet::V1::SayHelloRequest) }
         def connect_request; end
+
+        sig { returns(::Greet::V1::SayHelloRequest) }
+        def message; end
       end
     RBI
   end
 
-  it "types connect_request as the union when RPCs take different classes" do
+  it "types connect_request and message as the union when RPCs take different classes" do
     expect(context.rbi_for(:MixedInputCompilerTestController)).to eq(<<~RBI)
       # typed: strong
 
@@ -82,6 +85,9 @@ RSpec.describe(Tapioca::Dsl::Compilers::ConnectRpcRailsController) do
 
         sig { returns(T.any(::Greet::V1::SayHelloRequest, ::Greet::V1::SayHelloResponse)) }
         def connect_request; end
+
+        sig { returns(T.any(::Greet::V1::SayHelloRequest, ::Greet::V1::SayHelloResponse)) }
+        def message; end
       end
     RBI
   end
