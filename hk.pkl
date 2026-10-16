@@ -22,7 +22,11 @@ local linters = new Mapping<String, Step> {
     glob = List("lib/**/*.rb", "sig/**/*.rbs", "Steepfile")
     check = "bundle exec steep check"
   }
-  ["actionlint"] = Builtins.actionlint
+  ["jactionlint"] = (Builtins.actionlint) {
+    check {
+      argv = List("jactionlint", "{{files}}")
+    }
+  }
   ["check-added-large-files"] = Builtins.check_added_large_files
   ["check-byte-order-marker"] = Builtins.check_byte_order_marker
   ["check-merge-conflict"] = Builtins.check_merge_conflict
