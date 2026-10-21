@@ -18,19 +18,19 @@ url = "https://github.com/apple/pkl/releases/download/0.31.1/pkl-macos-aarch64"
 url_api = "https://api.github.com/repos/apple/pkl/releases/assets/382243720"
 
 [[tools."aqua:jdx/hk"]]
-version = "1.53.0"
+version = "2.8.0"
 backend = "aqua:jdx/hk"
-specifiers = ["1.53.0"]
+specifiers = ["2.8.0"]
 
 [tools."aqua:jdx/hk"."platforms.linux-x64"]
-checksum = "sha256:960c14b3bcd61e36dcb42c304e3cc23b22ef2e6f28ac6559e3856d27acf6b54a"
-url = "https://github.com/jdx/hk/releases/download/v1.53.0/hk-x86_64-unknown-linux-gnu.tar.gz"
-url_api = "https://api.github.com/repos/jdx/hk/releases/assets/487429267"
+checksum = "sha256:5b5d7021625d12825b3d44496b466ad65697e02651c8b9fe00117f5c25c73d0a"
+url = "https://github.com/jdx/hk/releases/download/v2.8.0/hk-x86_64-unknown-linux-gnu.tar.gz"
+url_api = "https://api.github.com/repos/jdx/hk/releases/assets/660247306"
 
 [tools."aqua:jdx/hk"."platforms.macos-arm64"]
-checksum = "sha256:d5c1f9a4c3598cc72c9f15908af6e036b138b9dd97c8891e4d08f699c98a5069"
-url = "https://github.com/jdx/hk/releases/download/v1.53.0/hk-aarch64-apple-darwin.tar.gz"
-url_api = "https://api.github.com/repos/jdx/hk/releases/assets/487429255"
+checksum = "sha256:9f0290ff3cbfa9f6baff640c846bf07f78dd29e2023b0c230d3d5226c23385ca"
+url = "https://github.com/jdx/hk/releases/download/v2.8.0/hk-aarch64-apple-darwin.tar.gz"
+url_api = "https://api.github.com/repos/jdx/hk/releases/assets/660247238"
 
 [[tools."aqua:rhysd/actionlint"]]
 version = "1.7.12"
@@ -65,3 +65,14 @@ checksum = "sha256:e28d22b087f9ebb8d99da6e740d348c930f559961c7c3f12badda54f88219
 url = "https://github.com/zizmorcore/zizmor/releases/download/v1.30.1/zizmor-aarch64-apple-darwin.tar.gz"
 url_api = "https://api.github.com/repos/zizmorcore/zizmor/releases/assets/552067640"
 provenance = "github-attestations"
+
+[[tools.ruby]]
+version = "4.0.6"
+backend = "core:ruby"
+specifiers = ["4.0.6"]
+
+[tools.ruby.options]
+compile = "false"
+precompiled_url = "jdx/ruby"
+ruby_build_repo = "https://github.com/rbenv/ruby-build.git"
+ruby_install = "false"
