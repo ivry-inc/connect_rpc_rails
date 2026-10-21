@@ -126,6 +126,13 @@ jobs:
           bundler-cache: true
 
       - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        with:
+          # eMudhra CA distrust (ARCH-3189): approved minimum-release-age exception; Renovate takes over after 2026-10-28T01:29:26Z.
+          version: 2026.10.17
+
+      - name: Check mise >= 2026.10.17
+        shell: bash
+        run: printf '%s\n' 2026.10.17 "$(mise --version | cut -d' ' -f1)" | sort -C -V
 
       # steep runs in its own job, which prepares the rbs collection it needs.
       - name: hk check

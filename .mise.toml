@@ -1,3 +1,5 @@
+min_version = { soft = "2026.10.17" }
+
 [tools]
 ruby = "4.0.6"
 "aqua:jdx/hk" = "2.8.0"
