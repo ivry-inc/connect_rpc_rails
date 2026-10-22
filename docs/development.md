@@ -10,7 +10,7 @@ bundle install
 
 ```sh
 bundle exec rspec             # specs
-hk check --all                # rubocop, steep, actionlint, zizmor (tools pinned in .mise.toml)
+hk check --all                # rubocop, steep, jactionlint, zizmor (tools pinned in .mise.toml)
 bundle exec rake rbs          # regenerate and validate sig/generated from inline annotations
 bundle exec rake steep        # regenerate, then type check lib with Steep
 bundle exec rake conformance  # the Connect conformance suite (needs Go and buf on PATH)
