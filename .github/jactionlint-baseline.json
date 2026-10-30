@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "file": ".github/workflows/release.yml",
+      "rule": "concurrency-limits",
+      "fingerprint": "351abdc9b28f80ee",
+      "context": "081b2e27040f94d3",
+      "occurrence": 0,
+      "message": "workflow has no \"concurrency:\", so every run of it executes at the same time even when a newer run is started while one is running (it runs for pushed tags). add a top-level \"concurrency:\" with a \"group:\" and \"cancel-in-progress: false\", so that a new run waits for the running release or deployment to finish instead of cancelling it. a newer run that is waiting replaces an older one that is waiting, so add \"queue: max\" when no release may be skipped. the workflow has jobs that call reusable workflows, and inside a called workflow \"github.workflow\" is the name of the caller, so a group that the caller and the called workflow both build from \"${{ github.workflow }}\" is the same one and the called workflow is cancelled at once. give the group of the caller its own part, such as \"-caller\", so that it never equals the group of a called workflow"
+    }
+  ]
+}
