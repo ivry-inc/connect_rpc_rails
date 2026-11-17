@@ -8,6 +8,12 @@ on:
 permissions:
   contents: read
 
+# Tag pushes that overlap wait for the running release and are published in order.
+concurrency:
+  group: release-caller
+  cancel-in-progress: false
+  queue: max
+
 jobs:
   test:
     permissions:

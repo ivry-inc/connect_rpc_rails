@@ -1,1 +1,2 @@
-profile: correctness
+profile: default
+baseline: auto
