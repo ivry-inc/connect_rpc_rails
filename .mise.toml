@@ -1,5 +1,5 @@
 [tools]
-ruby = "4.0.6"
+ruby = "4.0.9"
 "aqua:jdx/hk" = "2.6.0"
 "aqua:apple/pkl" = "0.31.1"
 "github:jdx/jactionlint" = "2.2.0"
