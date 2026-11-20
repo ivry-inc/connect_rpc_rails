@@ -32,9 +32,9 @@ module ConnectRpcRails
   #   end
   #
   # An action takes no arguments, like every other Rails action: the decoded request is
-  # `connect_request`, read the way `params` is read in an HTTP controller. It is an
-  # ordinary instance method, so it gets the per-request instance Rails already builds for
-  # every action — nothing holding request state outlives the request. There is
+  # `connect_request` (or `message`), read the way `params` is read in an HTTP controller. It
+  # is an ordinary instance method, so it gets the per-request instance Rails already builds
+  # for every action — nothing holding request state outlives the request. There is
   # deliberately no handler object registered on the controller class: that one instance
   # would be shared by every request in the process.
   #
@@ -359,6 +359,10 @@ module ConnectRpcRails
     private def connect_request
       @connect_request
     end
+
+    # Shorthand for #connect_request.
+    #: () -> untyped
+    private def message = connect_request
 
     # Request metadata: the request's HTTP headers, downcased and dasherized, which is
     # what Connect metadata is on the wire. Response metadata needs no helper — leading

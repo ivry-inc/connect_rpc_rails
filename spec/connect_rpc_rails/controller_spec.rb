@@ -12,6 +12,16 @@ class GreetRpcController < ActionController::API
   self.token_verifier = GreetHelpers::VERIFIER
 end
 
+class MessageGreetController < ActionController::API
+  include ConnectRpcRails::Controller
+
+  connect_service GreetHelpers::SERVICE_NAME
+
+  def say_hello
+    Greet::V1::SayHelloResponse.new(greeting: "Hello, #{message.name}!")
+  end
+end
+
 RSpec.describe ConnectRpcRails::Controller do
   it "round-trips a JSON unary call with a valid bearer token" do
     body = Greet::V1::SayHelloRequest.encode_json(say_hello_request(name: "Ada"))
@@ -32,6 +42,15 @@ RSpec.describe ConnectRpcRails::Controller do
     expect(status).to eq(200)
     expect(headers["content-type"]).to eq("application/proto")
     expect(Greet::V1::SayHelloResponse.decode(resp).greeting).to eq("Bonjour, Grace!")
+  end
+
+  it "reads the decoded request through message as well" do
+    body = Greet::V1::SayHelloRequest.encode_json(say_hello_request(name: "Ada"))
+
+    status, _headers, resp = call_connect(MessageGreetController, "SayHello", body, content_type: "application/json")
+
+    expect(status).to eq(200)
+    expect(Greet::V1::SayHelloResponse.decode_json(resp).greeting).to eq("Hello, Ada!")
   end
 
   it "returns unauthenticated (401) when the bearer token is missing" do
